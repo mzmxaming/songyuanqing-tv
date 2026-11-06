@@ -151,7 +151,7 @@ fun PlayerScreen(
                 pendingSeek = 0L
             }
         } else {
-            statusMessage = "播放器启动失败，请确认已安装 VLC"
+            statusMessage = "播放器启动失败，请重装应用或安装 VLC 后重试"
         }
     }
 
@@ -379,12 +379,14 @@ private fun VideoArea(
             )
 
             isPortrait -> SwingPanel(
-                factory = { controller.canvas },
+                background = Color.Black,
+                factory = { controller.videoSurface },
                 modifier = Modifier.fillMaxHeight().aspectRatio(aspect ?: (9f / 16f))
             )
 
             else -> SwingPanel(
-                factory = { controller.canvas },
+                background = Color.Black,
+                factory = { controller.videoSurface },
                 modifier = Modifier.fillMaxSize()
             )
         }

@@ -1,18 +1,56 @@
 package com.bocchi.tv.desktop.player
 
-import uk.co.caprica.vlcj.factory.MediaPlayerFactory
+import com.sun.jna.Library
+import com.sun.jna.Native
+import com.sun.jna.NativeLibrary
+import uk.co.caprica.vlcj.binding.support.runtime.RuntimeUtil
 import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery
 import uk.co.caprica.vlcj.player.base.MediaPlayer
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
+import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent
 import uk.co.caprica.vlcj.player.embedded.EmbeddedMediaPlayer
-import java.awt.Canvas
+import java.awt.BorderLayout
+import java.io.File
+import javax.swing.JPanel
+
+/** libVLC 动态库的候选文件名（Windows / macOS / Linux）。 */
+private val VLC_LIBRARY_NAMES = listOf("libvlc.dll", "libvlc.dylib", "libvlc.so", "libvlc.so.5")
+
+/**
+ * 定位随包内置的 libVLC 目录。
+ *
+ * 功能：依次尝试开发期系统属性、安装包资源目录、便携版目录；目录内需存在 libVLC 动态库。
+ * 参数：无。
+ * 返回值：File? —— 命中返回目录，未内置返回 null。
+ */
+private fun resolveBundledVlcDirectory(): File? {
+    val candidates = buildList {
+        System.getProperty("bundled.vlc.dir")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { add(File(it)) }
+        System.getProperty("compose.application.resources.dir")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { add(File(it, "vlc")) }
+        // 便携解压版兜底：<安装目录>/app/resources/vlc
+        System.getProperty("jpackage.app-path")
+            ?.let { File(it).parentFile }
+            ?.let { add(File(it, "app/resources/vlc")) }
+    }
+    return candidates.firstOrNull { candidate ->
+        if (!candidate.isDirectory) return@firstOrNull false
+        val libDir = File(candidate, "lib").takeIf { it.isDirectory } ?: candidate
+        VLC_LIBRARY_NAMES.any { File(libDir, it).isFile }
+    }
+}
 
 /**
  * VLC 播放器封装（桌面端）。
  *
- * 功能：用 libVLC 播放 HLS / mp4 等地址，画面直接渲染到 AWT Canvas 上，再由 Compose 的 SwingPanel 承载。
- *      初始化时会自动探测本机 VLC 安装位置；探测失败返回可读提示，由界面展示而不是白屏。
- * 参数：无（构造时仅创建画布，引擎在 [initialize] 中启动）。
+ * 功能：用 libVLC 播放 HLS / mp4 等地址。画面通过 VLCJ 的「回调渲染」绘制到 Swing 面板上，
+ *      再由 Compose 的 SwingPanel 承载——不使用 AWT 原生子窗口，避免窗口缩放/最大化后画面覆盖界面。
+ *      初始化时优先使用安装包内置的 libVLC（无需用户安装 VLC），未内置时回退探测本机 VLC；
+ *      两者都不可用则返回可读提示，由界面展示而不是白屏。
+ * 参数：无（构造时仅创建面板，引擎在 [initialize] 中启动）。
  * 返回值：无（服务类）。
  */
 class VlcPlayerController {
@@ -25,14 +63,14 @@ class VlcPlayerController {
      */
     data class InitResult(val available: Boolean, val message: String = "")
 
-    /** 承载视频画面的 AWT 画布。 */
-    val canvas: Canvas = Canvas().apply {
+    /** 承载视频画面的 Swing 面板（引用稳定，供 Compose SwingPanel 承载）。 */
+    val videoSurface: JPanel = JPanel(BorderLayout()).apply {
         background = java.awt.Color.BLACK
-        isVisible = true
+        isOpaque = true
     }
 
-    /** VLC 媒体工厂（播放器与视频输出的创建入口）。 */
-    private var factory: MediaPlayerFactory? = null
+    /** VLCJ 的 Swing 播放组件（内部完成解码后回调绘制）。 */
+    private var component: CallbackMediaPlayerComponent? = null
 
     /** 底层播放器实例。 */
     private var player: EmbeddedMediaPlayer? = null
@@ -41,36 +79,109 @@ class VlcPlayerController {
     var isAvailable: Boolean = false
         private set
 
+    /** 当前使用的内置 libVLC 目录；为空表示使用本机安装的 VLC。 */
+    var bundledDirectory: File? = null
+        private set
+
     /**
      * 初始化播放引擎。
      *
-     * 功能：探测本机 libVLC 并创建播放器，把视频输出绑定到 [canvas]；重复调用直接返回成功。
+     * 功能：优先加载安装包内置的 libVLC 并创建播放器，失败时回退到本机 VLC；重复调用直接返回成功。
      * 参数：无。
      * 返回值：InitResult —— 成功或失败说明。
      */
     fun initialize(): InitResult {
         if (isAvailable) return InitResult(true)
+
+        val bundled = resolveBundledVlcDirectory()
+        if (bundled != null) {
+            val result = runCatching {
+                val libDir = File(bundled, "lib").takeIf { it.isDirectory } ?: bundled
+                startEngine(libDir, File(bundled, "plugins").takeIf { it.isDirectory })
+                println("libVLC 使用内置运行库：${loadedLibraryPath() ?: libDir.absolutePath}")
+                InitResult(true)
+            }.getOrElse { error ->
+                InitResult(false, "内置播放组件启动失败：${error.message ?: "未知错误"}")
+            }
+            if (result.available) {
+                bundledDirectory = bundled
+                return result
+            }
+        }
+
         val discovered = runCatching { NativeDiscovery().discover() }.getOrDefault(false)
         if (!discovered) {
             return InitResult(
                 false,
-                "未找到 VLC 运行库。请先安装 VLC（videolan.org），安装后重启本程序即可播放。"
+                "未找到可用的播放组件：安装包内置运行库缺失，且本机未安装 VLC。" +
+                    "请重新安装应用，或安装 VLC（videolan.org）后重启本程序。"
             )
         }
         return runCatching {
-            val createdFactory = MediaPlayerFactory()
-            val createdPlayer = createdFactory.mediaPlayers().newEmbeddedMediaPlayer()
-            createdPlayer.videoSurface().set(
-                createdFactory.videoSurfaces().newVideoSurface(canvas)
-            )
-            factory = createdFactory
-            player = createdPlayer
-            isAvailable = true
+            startEngine(null, null)
+            println("libVLC 使用系统安装：${loadedLibraryPath() ?: "未知路径"}")
             InitResult(true)
         }.getOrElse { error ->
             InitResult(false, "播放引擎启动失败：${error.message ?: "未知错误"}")
         }
     }
+
+    /**
+     * 创建 libVLC 实例并把画面接入 [videoSurface]。
+     *
+     * 参数：libDir 动态库目录（为 null 表示交给 VLCJ 自行探测）；
+     *      pluginsDir 插件目录（为 null 表示使用 VLC 默认插件路径）。
+     * 返回值：无。
+     */
+    private fun startEngine(libDir: File?, pluginsDir: File?) {
+        if (libDir != null) {
+            System.setProperty("jna.library.path", libDir.absolutePath)
+        }
+        if (pluginsDir != null) {
+            applyPluginPath(pluginsDir)
+        }
+        val created = CallbackMediaPlayerComponent()
+        videoSurface.add(created.videoSurfaceComponent(), BorderLayout.CENTER)
+        videoSurface.revalidate()
+        component = created
+        player = created.mediaPlayer()
+        isAvailable = true
+    }
+
+    /**
+     * 指定 VLC 插件目录。
+     *
+     * 功能：Windows 下 libVLC 会自动在同级目录查找 plugins，无需额外设置；
+     *      macOS / Linux 通过 libc 的 setenv 设置 VLC_PLUGIN_PATH（Java 进程无法直接修改环境变量）。
+     * 参数：dir —— 插件目录。
+     * 返回值：无。
+     */
+    private fun applyPluginPath(dir: File) {
+        if (RuntimeUtil.isWindows()) return
+        runCatching {
+            Native.load("c", LibC::class.java).setenv("VLC_PLUGIN_PATH", dir.absolutePath, 1)
+        }
+    }
+
+    /**
+     * libc 环境变量接口（仅 macOS / Linux 使用）。
+     *
+     * 参数：无。
+     * 返回值：无（JNA 映射接口）。
+     */
+    private interface LibC : Library {
+        fun setenv(name: String, value: String, overwrite: Int): Int
+    }
+
+    /**
+     * 读取当前实际加载的 libVLC 动态库路径。
+     *
+     * 参数：无。
+     * 返回值：String? —— 路径；读取失败返回 null。
+     */
+    private fun loadedLibraryPath(): String? = runCatching {
+        NativeLibrary.getInstance(RuntimeUtil.getLibVlcLibraryName()).file.absolutePath
+    }.getOrNull()
 
     /**
      * 播放指定地址。
@@ -185,19 +296,21 @@ class VlcPlayerController {
 
     /** 释放播放器资源。 */
     fun release() {
-        runCatching { player?.release() }
-        runCatching { factory?.release() }
+        runCatching { component?.release() }
+        videoSurface.removeAll()
+        component = null
         player = null
-        factory = null
         isAvailable = false
     }
 }
 
 /**
- * 判断 libVLC 是否已就绪。
+ * 判断播放组件是否就绪。
  *
- * 功能：在不创建播放器的情况下探测本机是否安装 VLC，供界面提前给出提示。
+ * 功能：内置 libVLC 或本机安装的 VLC 任一可用即返回 true，供界面提前给出提示。
  * 参数：无。
- * 返回值：Boolean —— 找到原生库返回 true。
+ * 返回值：Boolean —— 可用返回 true。
  */
-fun isVlcAvailable(): Boolean = runCatching { NativeDiscovery().discover() }.getOrDefault(false)
+fun isVlcAvailable(): Boolean =
+    resolveBundledVlcDirectory() != null ||
+        runCatching { NativeDiscovery().discover() }.getOrDefault(false)

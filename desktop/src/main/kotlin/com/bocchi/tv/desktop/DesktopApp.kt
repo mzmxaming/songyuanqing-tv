@@ -114,9 +114,9 @@ fun DesktopApp(windowState: WindowState) {
      */
     fun setFullscreen(fullscreen: Boolean) {
         isFullscreen = fullscreen
-        // 说明：这里只切换应用内的沉浸布局（隐藏导航/顶栏/侧栏），不改变窗口大小。
-        // 原因是 Compose Desktop 的 SwingPanel 承载的是 AWT 重层级画布，窗口在系统全屏 /
-        // 最大化切换时互操作层不会随之重新布局，画布会覆盖整个窗口并盖住控制条。
+        // 说明：这里切换的是应用内沉浸布局（隐藏导航/顶栏/侧栏），画面充满整个窗口。
+        // 不调用系统级全屏，是为了避免各平台窗口管理器在切换动画期间导致互操作层重新布局、
+        // 画面与控件短暂错位。
         if (!fullscreen) {
             windowState.placement = WindowPlacement.Floating
         }

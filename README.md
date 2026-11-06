@@ -22,9 +22,9 @@
 
 | 平台 | 形态 | 说明 |
 | --- | --- | --- |
-| Windows | MSI / EXE / 便携版 | 播放依赖本机安装的 VLC（libVLC） |
-| macOS | DMG / .app | 播放依赖本机安装的 VLC |
-| Linux / 麒麟 | .deb / .rpm / 便携 tar.gz | 银河麒麟 V10（Debian 系）用 deb，中标麒麟（RHEL 系）用 rpm；播放依赖本机安装 VLC |
+| Windows | MSI / EXE / 便携版 | 已内置 libVLC 3.0.21，安装即播，无需另装 VLC |
+| macOS | DMG / .app | 已内置 libVLC 3.0.21（Intel / Apple 芯片各自打包），无需另装 VLC |
+| Linux / 麒麟 | .deb / .rpm / 便携 tar.gz | 银河麒麟 V10（Debian 系）用 deb，中标麒麟（RHEL 系）用 rpm；播放使用系统 VLC（`apt install vlc` / `dnf install vlc`） |
 | iOS | 已签名 IPA / Xcode 工程 | 播放使用系统 AVPlayer；Ad Hoc 签名，仅描述文件内的设备可安装 |
 
 ## 工程结构
@@ -68,7 +68,7 @@ sudo dnf install -y vlc
 sudo rpm -ivh songyuanqing-tv-1.0.0-1.x86_64.rpm
 ```
 
-便携包解压后直接运行 `SongyuanqingTV/bin/SongyuanqingTV`，同样需要系统已安装 VLC。
+便携包解压后直接运行 `SongyuanqingTV/bin/SongyuanqingTV`；Windows / macOS 便携包同样已内置 libVLC。
 
 ## 自动打包
 

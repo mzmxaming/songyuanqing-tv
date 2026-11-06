@@ -10,7 +10,7 @@ on:
 
 jobs:
   windows:
-    name: Windows Package
+    name: Windows Package (x86_64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,8 +52,8 @@ jobs:
           path: dist/**
           if-no-files-found: warn
 
-  macos:
-    name: macOS Package
+  macos-arm64:
+    name: macOS Package (arm64 / Apple Silicon)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,16 +67,59 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build macOS dmg
+      - name: Build macOS dmg (arm64)
         run: ./gradlew :desktop:packageDmg :desktop:createDistributable --stacktrace
+
+      - name: Rename artifacts with arch suffix
+        run: |
+          cd desktop/build/compose/binaries/main/dmg
+          for f in *.dmg; do
+            base="${f%.dmg}"
+            mv "$f" "${base}-arm64.dmg"
+          done
+          ls -lh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-packages
+          name: macos-arm64-packages
           path: |
             desktop/build/compose/binaries/main/dmg/*.dmg
-            desktop/build/compose/binaries/main/app/**
+          if-no-files-found: warn
+
+  macos-intel:
+    name: macOS Package (x86_64 / Intel)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build macOS dmg (x86_64)
+        run: ./gradlew :desktop:packageDmg :desktop:createDistributable --stacktrace
+
+      - name: Rename artifacts with arch suffix
+        run: |
+          cd desktop/build/compose/binaries/main/dmg
+          for f in *.dmg; do
+            base="${f%.dmg}"
+            mv "$f" "${base}-x86_64.dmg"
+          done
+          ls -lh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-intel-packages
+          path: |
+            desktop/build/compose/binaries/main/dmg/*.dmg
           if-no-files-found: warn
 
   ios:
@@ -119,7 +162,7 @@ jobs:
           if-no-files-found: warn
 
   linux:
-    name: Linux Package
+    name: Linux Package (x86_64)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -153,7 +196,7 @@ jobs:
           cp desktop/build/compose/binaries/main/rpm/*.rpm dist/ 2>/dev/null || true
           APP=$(ls -d desktop/build/compose/binaries/main/app/*/ | head -n 1)
           APP=${APP%/}
-          tar -czf dist/songyuanqing-tv-linux-portable.tar.gz -C "$(dirname "$APP")" "$(basename "$APP")"
+          tar -czf dist/songyuanqing-tv-linux-portable-amd64.tar.gz -C "$(dirname "$APP")" "$(basename "$APP")"
           echo "--- 产物目录 ---"
           find desktop/build/compose/binaries/main -maxdepth 2 -type d
           ls -lh dist
@@ -162,6 +205,54 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-packages
+          path: dist/**
+          if-no-files-found: warn
+
+  linux-arm64:
+    name: Linux Package (aarch64 / ARM64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: aarch64
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm
+
+      - name: Build Linux packages (aarch64)
+        run: ./gradlew :desktop:packageDeb :desktop:packageRpm :desktop:createDistributable --stacktrace
+
+      - name: Dump packaging logs on failure
+        if: failure()
+        run: |
+          find desktop/build/compose/logs -type f -exec sh -c 'echo "===== $1 ====="; cat "$1"' _ {} \; || true
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          cp desktop/build/compose/binaries/main/deb/*.deb dist/ 2>/dev/null || true
+          cp desktop/build/compose/binaries/main/rpm/*.rpm dist/ 2>/dev/null || true
+          APP=$(ls -d desktop/build/compose/binaries/main/app/*/ | head -n 1)
+          APP=${APP%/}
+          tar -czf dist/songyuanqing-tv-linux-portable-arm64.tar.gz -C "$(dirname "$APP")" "$(basename "$APP")"
+          echo "--- 产物目录 ---"
+          find desktop/build/compose/binaries/main -maxdepth 2 -type d
+          ls -lh dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64-packages
           path: dist/**
           if-no-files-found: warn
 
@@ -252,7 +343,7 @@ jobs:
       - name: Rename IPA
         run: |
           cd "$RUNNER_TEMP/ipa"
-          for f in *.ipa; do mv "$f" "SongyuanqingTV-1.2.2.ipa"; done
+          for f in *.ipa; do mv "$f" "SongyuanqingTV-1.2.3.ipa"; done
           ls -lh
 
       - name: Upload IPA
@@ -265,7 +356,7 @@ jobs:
   release:
     name: Publish Release
     if: always() && startsWith(github.ref, 'refs/tags/v')
-    needs: [ windows, macos, linux, ios-signed ]
+    needs: [ windows, macos-arm64, macos-intel, linux, linux-arm64, ios-signed ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -282,10 +373,14 @@ jobs:
             release-assets/windows-packages/*.msi
             release-assets/windows-packages/*.exe
             release-assets/windows-packages/*.zip
-            release-assets/macos-packages/dmg/*.dmg
+            release-assets/macos-arm64-packages/*.dmg
+            release-assets/macos-intel-packages/*.dmg
             release-assets/linux-packages/*.deb
             release-assets/linux-packages/*.rpm
             release-assets/linux-packages/*.tar.gz
+            release-assets/linux-arm64-packages/*.deb
+            release-assets/linux-arm64-packages/*.rpm
+            release-assets/linux-arm64-packages/*.tar.gz
             release-assets/ios-signed/*.ipa
           fail_on_unmatched_files: false
           draft: false

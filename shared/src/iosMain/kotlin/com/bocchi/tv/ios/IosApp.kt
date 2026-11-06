@@ -164,7 +164,7 @@ fun IosApp() {
  * 返回值：无。
  */
 @Composable
-private fun SearchScreen(
+internal fun SearchScreen(
     keyword: String,
     onKeywordChange: (String) -> Unit,
     onSearch: () -> Unit,
@@ -240,7 +240,7 @@ private fun SearchScreen(
  * 返回值：无。
  */
 @Composable
-private fun CenterHint(text: String) {
+internal fun CenterHint(text: String) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
             text = text,
@@ -257,7 +257,7 @@ private fun CenterHint(text: String) {
  * 返回值：无。
  */
 @Composable
-private fun VideoCard(video: AggregatedVideo, onClick: () -> Unit) {
+internal fun VideoCard(video: AggregatedVideo, onClick: () -> Unit) {
     Column(modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick)) {
         Poster(url = video.poster, modifier = Modifier.fillMaxWidth().aspectRatio(0.7f))
         Spacer(modifier = Modifier.height(6.dp))
@@ -286,7 +286,7 @@ private fun VideoCard(video: AggregatedVideo, onClick: () -> Unit) {
  * 返回值：无。
  */
 @Composable
-private fun Poster(url: String, modifier: Modifier = Modifier) {
+internal fun Poster(url: String, modifier: Modifier = Modifier) {
     var image by remember(url) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(url) {
         image = if (url.isBlank()) {
@@ -319,16 +319,24 @@ private fun Poster(url: String, modifier: Modifier = Modifier) {
  * 播放页。
  *
  * 功能：顶部为 AVPlayer 画面，底部为进度、片源、线路与选集；选中剧集后先解析地址再播放。
- * 参数：video 聚合条目；initialMatch 初始片源；onBack 返回回调。
+ * 参数：video 聚合条目；initialMatch 初始片源；initialLineIndex 初始线路；initialEpisodeIndex 初始集数；initialPositionMs 起播位置；onBack 返回回调。
  * 返回值：无。
  */
 @Composable
-private fun PlayerScreen(video: AggregatedVideo, initialMatch: VideoSummary, onBack: () -> Unit) {
+internal fun PlayerScreen(
+    video: AggregatedVideo,
+    initialMatch: VideoSummary,
+    initialLineIndex: Int = 0,
+    initialEpisodeIndex: Int = 0,
+    initialPositionMs: Long = 0L,
+    onBack: () -> Unit
+) {
     val controller = remember { IosPlayerController() }
     var currentMatch by remember { mutableStateOf(initialMatch) }
     var detail by remember { mutableStateOf<VideoDetail?>(null) }
-    var lineIndex by remember { mutableStateOf(0) }
-    var episodeIndex by remember { mutableStateOf(0) }
+    var lineIndex by remember { mutableStateOf(initialLineIndex) }
+    var episodeIndex by remember { mutableStateOf(initialEpisodeIndex) }
+    var pendingSeek by remember { mutableStateOf(initialPositionMs) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isPreparing by remember { mutableStateOf(false) }
     var elapsedMs by remember { mutableStateOf(0L) }
@@ -343,8 +351,6 @@ private fun PlayerScreen(video: AggregatedVideo, initialMatch: VideoSummary, onB
         detail = withContext(Dispatchers.Default) {
             AppGraph.videoRepository.loadDetail(currentMatch)
         }
-        lineIndex = 0
-        episodeIndex = 0
         if (detail == null) statusMessage = "详情加载失败，请切换其他片源重试"
     }
 
@@ -362,16 +368,37 @@ private fun PlayerScreen(video: AggregatedVideo, initialMatch: VideoSummary, onB
         } else if (controller.play(mediaUrl)) {
             statusMessage = null
             controller.setVolume(volume)
+            val seekTo = pendingSeek
+            if (seekTo > 0L) {
+                delay(900)
+                controller.seekToMillis(seekTo)
+                pendingSeek = 0L
+            }
         } else {
             statusMessage = "播放器启动失败"
         }
     }
 
     LaunchedEffect(Unit) {
+        var tick = 0
         while (true) {
             val (current, total) = controller.progress()
             elapsedMs = current
             totalMs = total
+            if (tick % 10 == 0 && total > 0) {
+                val episodeName = detail?.lines?.getOrNull(lineIndex)
+                    ?.episodes?.getOrNull(episodeIndex)?.name.orEmpty()
+                runCatching {
+                    AppGraph.historyStore.record(
+                        summary = currentMatch,
+                        episodeName = episodeName,
+                        episodeIndex = episodeIndex,
+                        positionMs = current,
+                        durationMs = total
+                    )
+                }
+            }
+            tick++
             delay(500)
         }
     }
@@ -551,7 +578,7 @@ private fun PlayerScreen(video: AggregatedVideo, initialMatch: VideoSummary, onB
  * 参数：millis —— 毫秒数。
  * 返回值：String —— 可展示的时间文本。
  */
-private fun formatTime(millis: Long): String {
+internal fun formatTime(millis: Long): String {
     if (millis <= 0) return "00:00"
     val totalSeconds = millis / 1000
     val hours = totalSeconds / 3600

@@ -10,4 +10,4 @@ import platform.UIKit.UIViewController
  * 参数：无。
  * 返回值：UIViewController —— 承载完整应用界面的控制器。
  */
-fun MainViewController(): UIViewController = ComposeUIViewController { IosApp() }
+fun MainViewController(): UIViewController = ComposeUIViewController { IosRoot() }

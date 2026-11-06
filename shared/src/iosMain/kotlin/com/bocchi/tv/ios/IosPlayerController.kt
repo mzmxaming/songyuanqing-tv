@@ -113,6 +113,17 @@ class IosPlayerController {
     }
 
     /**
+     * 按毫秒跳转（用于续播）。
+     *
+     * 参数：ms —— 目标毫秒数。
+     * 返回值：无。
+     */
+    fun seekToMillis(ms: Long) {
+        val current = player ?: return
+        current.seekToTime(CMTimeMakeWithSeconds(ms.coerceAtLeast(0L) / 1000.0, 1000))
+    }
+
+    /**
      * 设置音量。
      *
      * 参数：volume —— 0~100。

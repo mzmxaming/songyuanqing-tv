@@ -118,6 +118,52 @@ jobs:
             iosApp/build/Debug-iphonesimulator/*.app
           if-no-files-found: warn
 
+  linux:
+    name: Linux Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm
+
+      - name: Build Linux packages
+        run: ./gradlew :desktop:packageDeb :desktop:packageRpm :desktop:packageAppImage :desktop:createDistributable --stacktrace
+
+      - name: Dump packaging logs on failure
+        if: failure()
+        run: |
+          find desktop/build/compose/logs -type f -exec sh -c 'echo "===== $1 ====="; cat "$1"' _ {} \; || true
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          cp desktop/build/compose/binaries/main/deb/*.deb dist/ 2>/dev/null || true
+          cp desktop/build/compose/binaries/main/rpm/*.rpm dist/ 2>/dev/null || true
+          cp desktop/build/compose/binaries/main/appimage/*.AppImage dist/ 2>/dev/null || true
+          APP=$(ls -d desktop/build/compose/binaries/main/app/*/ | head -n 1)
+          APP=${APP%/}
+          tar -czf dist/songyuanqing-tv-linux-portable.tar.gz -C "$(dirname "$APP")" "$(basename "$APP")"
+          ls -lh dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: dist/**
+          if-no-files-found: warn
+
   ios-signed:
     name: iOS Signed IPA
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -218,7 +264,7 @@ jobs:
   release:
     name: Publish Release
     if: always() && startsWith(github.ref, 'refs/tags/v')
-    needs: [ windows, macos, ios-signed ]
+    needs: [ windows, macos, linux, ios-signed ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -236,6 +282,10 @@ jobs:
             release-assets/windows-packages/*.exe
             release-assets/windows-packages/*.zip
             release-assets/macos-packages/dmg/*.dmg
+            release-assets/linux-packages/*.deb
+            release-assets/linux-packages/*.rpm
+            release-assets/linux-packages/*.AppImage
+            release-assets/linux-packages/*.tar.gz
             release-assets/ios-signed/*.ipa
           fail_on_unmatched_files: false
           draft: false

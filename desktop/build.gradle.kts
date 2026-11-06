@@ -20,7 +20,14 @@ compose.desktop {
         mainClass = "com.bocchi.tv.desktop.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Dmg)
+            targetFormats(
+                TargetFormat.Msi,
+                TargetFormat.Exe,
+                TargetFormat.Dmg,
+                TargetFormat.Deb,
+                TargetFormat.Rpm,
+                TargetFormat.AppImage
+            )
             packageName = "SongyuanqingTV"
             packageVersion = "1.0.0"
             // WiX 的 light.exe 在非中文代码页（如 CI 的 en-US）下无法处理中文元数据，会以退出码 311 失败，
@@ -40,6 +47,13 @@ compose.desktop {
             macOS {
                 bundleID = "vip.songyuanqing.tv"
                 dockName = "松源情·TV"
+            }
+            linux {
+                // deb 包名必须小写；银河麒麟 V10（Debian 系）与中标麒麟（RHEL 系）分别用 deb / rpm
+                packageName = "songyuanqing-tv"
+                debMaintainer = "Chen Guangming <noreply@example.com>"
+                appCategory = "AudioVideo"
+                menuGroup = "AudioVideo"
             }
         }
     }

@@ -25,3 +25,9 @@ shared/build/
 # OS
 .DS_Store
 Thumbs.db
+
+# iOS 签名材料（只放 GitHub Secrets，绝不入库）
+*.p12
+*.cer
+*.mobileprovision
+isocert/

@@ -151,12 +151,27 @@ jobs:
           printf '%s' "$P12_BASE64" | openssl base64 -d -A -out "$CERT_PATH"
           printf '%s' "$PROFILE_BASE64" | openssl base64 -d -A -out "$PROFILE_PATH"
 
+          # 现代工具导出的 p12 使用 PBES2/SHA-256，macOS 的 security import 会报 MAC 校验失败；
+          # 先转成 3DES + SHA1 的兼容格式再导入。
+          OPENSSL_BIN="$(command -v openssl)"
+          for candidate in /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
+            if [ -x "$candidate" ]; then OPENSSL_BIN="$candidate"; break; fi
+          done
+          "$OPENSSL_BIN" version
+          "$OPENSSL_BIN" pkcs12 -in "$CERT_PATH" -nodes -passin "pass:$P12_PASSWORD" -out "$RUNNER_TEMP/signing.pem"
+          if ! "$OPENSSL_BIN" pkcs12 -export -legacy -in "$RUNNER_TEMP/signing.pem" -name "iPhone Distribution" \
+                -out "$RUNNER_TEMP/signing-legacy.p12" -passout "pass:$P12_PASSWORD"; then
+            "$OPENSSL_BIN" pkcs12 -export -in "$RUNNER_TEMP/signing.pem" -name "iPhone Distribution" \
+              -out "$RUNNER_TEMP/signing-legacy.p12" -passout "pass:$P12_PASSWORD" \
+              -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
+          fi
+
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$CERT_PATH" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/signing-legacy.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
 

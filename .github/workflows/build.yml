@@ -1,0 +1,117 @@
+name: Build All Platforms
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows Package
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Windows installers
+        run: ./gradlew :desktop:packageMsi :desktop:packageExe :desktop:createDistributable --stacktrace
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -Recurse -Force desktop/build/compose/binaries/main/app/SongyuanqingTV dist/SongyuanqingTV-portable
+          Compress-Archive -Force -Path dist/SongyuanqingTV-portable -DestinationPath dist/SongyuanqingTV-windows-portable.zip
+          Get-ChildItem desktop/build/compose/binaries/main/msi/*.msi -ErrorAction SilentlyContinue | Copy-Item -Destination dist
+          Get-ChildItem desktop/build/compose/binaries/main/exe/*.exe -ErrorAction SilentlyContinue | Copy-Item -Destination dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: dist/**
+          if-no-files-found: warn
+
+  macos:
+    name: macOS Package
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build macOS dmg
+        run: ./gradlew :desktop:packageDmg :desktop:createDistributable --stacktrace
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-packages
+          path: |
+            desktop/build/compose/binaries/main/dmg/*.dmg
+            desktop/build/compose/binaries/main/app/**
+          if-no-files-found: warn
+
+  ios:
+    name: iOS Framework
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile iOS targets
+        run: |
+          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 :shared:linkDebugFrameworkIosArm64 --stacktrace
+
+      - name: Upload iOS frameworks
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-frameworks
+          path: shared/build/bin/ios*/**/*.framework
+          if-no-files-found: warn
+
+  release:
+    name: Publish Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ windows, macos ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/**/*
+          draft: false
+          generate_release_notes: true

@@ -2,31 +2,24 @@ package com.bocchi.tv.desktop
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,72 +30,61 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowState
 import com.bocchi.tv.data.video.model.AggregateResult
 import com.bocchi.tv.data.video.model.AggregatedVideo
 import com.bocchi.tv.data.video.model.VideoSummary
+import com.bocchi.tv.desktop.ui.AppColorScheme
 import com.bocchi.tv.shared.AppGraph
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.URI
-import javax.imageio.ImageIO
-
-/**
- * 应用主题色板。
- *
- * 功能：统一的深色配色，接近观影场景，长时间浏览不刺眼。
- * 参数：无。
- * 返回值：ColorScheme —— Compose 主题配置。
- */
-private val AppColorScheme = darkColorScheme(
-    primary = Color(0xFFE5484D),
-    onPrimary = Color.White,
-    background = Color(0xFF14141A),
-    onBackground = Color(0xFFE8E8ED),
-    surface = Color(0xFF1C1C24),
-    onSurface = Color(0xFFE8E8ED),
-    surfaceVariant = Color(0xFF262630),
-    onSurfaceVariant = Color(0xFF9A9AA8)
-)
 
 /**
  * 界面路由。
  *
- * 参数：Search 搜索与结果；Player 播放页。
+ * 参数：Home 首页推荐；Browse 分类浏览；Mine 收藏与历史；Settings 设置；
+ *      SearchResult 搜索结果；Detail 影片详情；Player 播放页。
  * 返回值：无（密封接口）。
  */
-private sealed interface AppScreen {
-    data object Search : AppScreen
-    data class Player(val video: AggregatedVideo, val match: VideoSummary) : AppScreen
+sealed interface AppScreen {
+    data object Home : AppScreen
+    data object Browse : AppScreen
+    data object Mine : AppScreen
+    data object Settings : AppScreen
+    data class SearchResult(val keyword: String) : AppScreen
+    data class Detail(val video: AggregatedVideo, val match: VideoSummary) : AppScreen
+    data class Player(
+        val video: AggregatedVideo,
+        val match: VideoSummary,
+        val lineIndex: Int = 0,
+        val episodeIndex: Int = 0,
+        val startPositionMs: Long = 0L
+    ) : AppScreen
 }
 
 /**
  * 桌面应用主界面。
  *
- * 功能：承载顶部搜索栏与内容区，在「搜索结果 / 播放页」之间切换；搜索结果采用流式刷新，
- *      每完成一个数据源就更新一次，因此用户不必等全部源返回。
- * 参数：无。
+ * 功能：左侧导航（首页 / 分类 / 我的 / 设置）+ 顶部搜索栏 + 内容区；
+ *      播放页可切换窗口全屏，全屏时隐藏导航与顶栏以获得沉浸体验。
+ * 参数：windowState —— 窗口状态，用于切换全屏。
  * 返回值：无。
  */
 @Composable
-fun DesktopApp() {
-    var screen by remember { mutableStateOf<AppScreen>(AppScreen.Search) }
+fun DesktopApp(windowState: WindowState) {
+    var screen by remember { mutableStateOf<AppScreen>(AppScreen.Home) }
     var keyword by remember { mutableStateOf("") }
-    var aggregate by remember { mutableStateOf(AggregateResult()) }
     var isSearching by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var searchResult by remember { mutableStateOf(AggregateResult()) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+    var isFullscreen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     /**
-     * 执行搜索。
+     * 执行聚合搜索。
      *
      * 参数：无。
      * 返回值：无。
@@ -110,23 +92,55 @@ fun DesktopApp() {
     fun runSearch() {
         val query = keyword.trim()
         if (query.isEmpty() || isSearching) return
-        errorMessage = null
-        aggregate = AggregateResult()
+        searchError = null
+        searchResult = AggregateResult()
         isSearching = true
+        screen = AppScreen.SearchResult(query)
         scope.launch {
             runCatching {
-                AppGraph.videoRepository.search(query).collect { snapshot ->
-                    aggregate = snapshot
-                }
+                AppGraph.videoRepository.search(query).collect { snapshot -> searchResult = snapshot }
             }.onFailure { error ->
-                errorMessage = "搜索失败：${error.message ?: "网络异常"}"
+                searchError = "搜索失败：${error.message ?: "网络异常"}"
             }
             isSearching = false
         }
     }
 
+    /**
+     * 切换窗口全屏。
+     *
+     * 参数：fullscreen —— 是否进入全屏。
+     * 返回值：无。
+     */
+    fun setFullscreen(fullscreen: Boolean) {
+        isFullscreen = fullscreen
+        // 说明：这里只切换应用内的沉浸布局（隐藏导航/顶栏/侧栏），不改变窗口大小。
+        // 原因是 Compose Desktop 的 SwingPanel 承载的是 AWT 重层级画布，窗口在系统全屏 /
+        // 最大化切换时互操作层不会随之重新布局，画布会覆盖整个窗口并盖住控制条。
+        if (!fullscreen) {
+            windowState.placement = WindowPlacement.Floating
+        }
+    }
+
     MaterialTheme(colorScheme = AppColorScheme) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            if (screen is AppScreen.Player && isFullscreen) {
+                PlayerScreen(
+                    video = (screen as AppScreen.Player).video,
+                    initialMatch = (screen as AppScreen.Player).match,
+                    initialLineIndex = (screen as AppScreen.Player).lineIndex,
+                    initialEpisodeIndex = (screen as AppScreen.Player).episodeIndex,
+                    initialPositionMs = (screen as AppScreen.Player).startPositionMs,
+                    isFullscreen = true,
+                    onToggleFullscreen = { setFullscreen(false) },
+                    onBack = {
+                        setFullscreen(false)
+                        screen = AppScreen.Home
+                    }
+                )
+                return@Surface
+            }
+
             Column(modifier = Modifier.fillMaxSize()) {
                 TopBar(
                     keyword = keyword,
@@ -134,22 +148,73 @@ fun DesktopApp() {
                     onSearch = ::runSearch,
                     enabled = !isSearching
                 )
+                Row(modifier = Modifier.fillMaxSize()) {
+                    SideNav(
+                        current = screen,
+                        onNavigate = { target -> screen = target }
+                    )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        when (val current = screen) {
+                            is AppScreen.Home -> HomeScreen(
+                                onOpenDetail = { video, match ->
+                                    screen = AppScreen.Detail(video, match)
+                                },
+                                onSearchTitle = { title ->
+                                    keyword = title
+                                    runSearch()
+                                }
+                            )
 
-                Box(modifier = Modifier.fillMaxSize()) {
-                    when (val current = screen) {
-                        is AppScreen.Search -> SearchContent(
-                            aggregate = aggregate,
-                            isSearching = isSearching,
-                            errorMessage = errorMessage,
-                            hasSearched = keyword.isNotBlank() && (aggregate.totalSources > 0 || isSearching),
-                            onPlay = { video, match -> screen = AppScreen.Player(video, match) }
-                        )
+                            is AppScreen.Browse -> BrowseScreen(
+                                onOpenDetail = { video, match ->
+                                    screen = AppScreen.Detail(video, match)
+                                }
+                            )
 
-                        is AppScreen.Player -> PlayerScreen(
-                            video = current.video,
-                            initialMatch = current.match,
-                            onBack = { screen = AppScreen.Search }
-                        )
+                            is AppScreen.SearchResult -> SearchResultScreen(
+                                keyword = current.keyword,
+                                result = searchResult,
+                                isSearching = isSearching,
+                                errorMessage = searchError,
+                                onOpenDetail = { video, match ->
+                                    screen = AppScreen.Detail(video, match)
+                                }
+                            )
+
+                            is AppScreen.Detail -> DetailScreen(
+                                video = current.video,
+                                match = current.match,
+                                onBack = { screen = AppScreen.SearchResult(current.video.title) },
+                                onPlay = { lineIndex, episodeIndex, positionMs ->
+                                    screen = AppScreen.Player(
+                                        video = current.video,
+                                        match = current.match,
+                                        lineIndex = lineIndex,
+                                        episodeIndex = episodeIndex,
+                                        startPositionMs = positionMs
+                                    )
+                                }
+                            )
+
+                            is AppScreen.Player -> PlayerScreen(
+                                video = current.video,
+                                initialMatch = current.match,
+                                initialLineIndex = current.lineIndex,
+                                initialEpisodeIndex = current.episodeIndex,
+                                initialPositionMs = current.startPositionMs,
+                                isFullscreen = false,
+                                onToggleFullscreen = { setFullscreen(true) },
+                                onBack = { screen = AppScreen.Detail(current.video, current.match) }
+                            )
+
+                            is AppScreen.Mine -> MineScreen(
+                                onOpenDetail = { video, match ->
+                                    screen = AppScreen.Detail(video, match)
+                                }
+                            )
+
+                            is AppScreen.Settings -> SettingsScreen()
+                        }
                     }
                 }
             }
@@ -194,9 +259,7 @@ private fun TopBar(
             keyboardActions = KeyboardActions(onSearch = { onSearch() })
         )
         Spacer(modifier = Modifier.width(12.dp))
-        Button(onClick = onSearch, enabled = enabled) {
-            Text(text = "搜索")
-        }
+        Button(onClick = onSearch, enabled = enabled) { Text(text = "搜索") }
         Spacer(modifier = Modifier.weight(1f))
         Text(
             text = "APP 设计开发：陈光明",
@@ -207,191 +270,47 @@ private fun TopBar(
 }
 
 /**
- * 搜索结果区。
+ * 左侧导航栏。
  *
- * 参数：aggregate 聚合快照；isSearching 是否搜索中；errorMessage 错误提示；
- *      hasSearched 是否已发起过搜索；onPlay 点击条目回调。
+ * 参数：current 当前页面；onNavigate 导航回调。
  * 返回值：无。
  */
 @Composable
-private fun SearchContent(
-    aggregate: AggregateResult,
-    isSearching: Boolean,
-    errorMessage: String?,
-    hasSearched: Boolean,
-    onPlay: (AggregatedVideo, VideoSummary) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            when {
-                errorMessage != null -> Text(
-                    text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
-
-                isSearching || aggregate.totalSources > 0 -> Text(
-                    text = "已完成 ${aggregate.finishedSources}/${aggregate.totalSources} 个源，共 ${aggregate.items.size} 部影片",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            if (isSearching) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-            }
-        }
-
-        when {
-            !hasSearched -> EmptyHint(text = "输入片名开始搜索。一次搜索，多个片源同时替你找。")
-
-            aggregate.isComplete && aggregate.items.isEmpty() -> EmptyHint(
-                text = "没有找到相关影片。换个片名或简称再试试。"
-            )
-
-            else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 168.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(aggregate.items, key = { it.matches.first().uniqueKey }) { video ->
-                    VideoCard(video = video, onClick = { onPlay(video, video.matches.first()) })
-                }
-            }
-        }
-    }
-}
-
-/**
- * 空状态提示。
- *
- * 参数：text 提示文案。
- * 返回值：无。
- */
-@Composable
-private fun EmptyHint(text: String) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-/**
- * 影片卡片。
- *
- * 参数：video 聚合条目；onClick 点击回调。
- * 返回值：无。
- */
-@Composable
-private fun VideoCard(video: AggregatedVideo, onClick: () -> Unit) {
+private fun SideNav(current: AppScreen, onNavigate: (AppScreen) -> Unit) {
+    val items = listOf(
+        Triple("首页", AppScreen.Home, AppScreen.Home),
+        Triple("分类", AppScreen.Browse, AppScreen.Browse),
+        Triple("我的", AppScreen.Mine, AppScreen.Mine),
+        Triple("设置", AppScreen.Settings, AppScreen.Settings)
+    )
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .width(112.dp)
+            .fillMaxHeight()
             .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClick = onClick)
-            .padding(8.dp)
+            .padding(vertical = 16.dp, horizontal = 10.dp)
     ) {
-        RemotePoster(
-            url = video.poster,
-            width = 152.dp,
-            height = 214.dp,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = video.title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        items.forEach { (label, target, marker) ->
+            val selected = when {
+                current is AppScreen.Player || current is AppScreen.Detail ->
+                    marker == AppScreen.Home
+                current is AppScreen.SearchResult -> marker == AppScreen.Home
+                else -> current == marker
+            }
             Text(
-                text = video.year.ifBlank { video.remarks },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
+                    .clickable { onNavigate(target) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
             )
-            Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text = "${video.sourceCount} 个源",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Spacer(modifier = Modifier.height(6.dp))
         }
     }
 }
-
-/**
- * 网络海报。
- *
- * 功能：异步加载海报图片，失败或为空时显示占位色块，不阻塞列表渲染。
- * 参数：url 图片地址；width 期望宽度；height 期望高度；modifier 布局修饰。
- * 返回值：无。
- */
-@Composable
-fun RemotePoster(url: String, width: Dp, height: Dp, modifier: Modifier = Modifier) {
-    var image by remember(url) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffectPoster(url) { image = it }
-
-    val shape = RoundedCornerShape(8.dp)
-    if (image != null) {
-        androidx.compose.foundation.Image(
-            bitmap = image!!,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = modifier.size(width, height).clip(shape)
-        )
-    } else {
-        Box(
-            modifier = modifier
-                .size(width, height)
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        )
-    }
-}
-
-/**
- * 异步加载海报的副作用。
- *
- * 功能：在 IO 线程用标准库下载并解码图片，避免 UI 线程阻塞；URL 变化时重新加载。
- * 参数：url 图片地址；onLoaded 加载完成回调（失败时为 null）。
- * 返回值：无。
- */
-@Composable
-private fun LaunchedEffectPoster(url: String, onLoaded: (ImageBitmap?) -> Unit) {
-    androidx.compose.runtime.LaunchedEffect(url) {
-        if (url.isBlank()) {
-            onLoaded(null)
-            return@LaunchedEffect
-        }
-        val decoded = withContext(Dispatchers.IO) {
-            runCatching {
-                val connection = URI(url).toURL().openConnection().apply {
-                    setRequestProperty("User-Agent", POSTER_USER_AGENT)
-                    connectTimeout = 8_000
-                    readTimeout = 8_000
-                }
-                connection.getInputStream().use { stream ->
-                    ImageIO.read(stream)?.toComposeImageBitmap()
-                }
-            }.getOrNull()
-        }
-        onLoaded(decoded)
-    }
-}
-
-/** 加载海报时使用的 UA，避免部分站点拒绝默认 Java UA。 */
-private const val POSTER_USER_AGENT: String =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"

@@ -96,6 +96,14 @@ class VlcPlayerController {
         runCatching { player?.controls()?.setPause(false) }
     }
 
+    /**
+     * 判断是否正在播放。
+     *
+     * 参数：无。
+     * 返回值：Boolean —— 播放中返回 true。
+     */
+    fun isPlaying(): Boolean = runCatching { player?.status()?.isPlaying == true }.getOrDefault(false)
+
     /** 停止播放。 */
     fun stop() {
         runCatching { player?.controls()?.stop() }
@@ -122,6 +130,32 @@ class VlcPlayerController {
     fun seekTo(position: Float) {
         runCatching { player?.controls()?.setPosition(position.coerceIn(0f, 1f)) }
     }
+
+    /**
+     * 按毫秒跳转。
+     *
+     * 参数：ms —— 目标时间（毫秒，负数按 0 处理）。
+     * 返回值：无。
+     */
+    fun seekToMillis(ms: Long) {
+        runCatching { player?.controls()?.setTime(ms.coerceAtLeast(0L)) }
+    }
+
+    /**
+     * 读取当前视频分辨率。
+     *
+     * 功能：供界面判断画幅（竖屏短剧需要按 9:16 展示），未出画面时返回 null。
+     * 参数：无。
+     * 返回值：Pair<Int, Int>? —— 宽高；未知时返回 null。
+     */
+    fun videoSize(): Pair<Int, Int>? = runCatching {
+        val dimension = player?.video()?.videoDimension()
+        if (dimension == null || dimension.width <= 0 || dimension.height <= 0) {
+            null
+        } else {
+            dimension.width to dimension.height
+        }
+    }.getOrNull()
 
     /**
      * 设置音量。

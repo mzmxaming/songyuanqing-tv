@@ -16,6 +16,8 @@ local.properties
 # Build outputs
 *.log
 shot*.png
+tmp*.png
+dist/
 desktop/build/
 shared/build/
 

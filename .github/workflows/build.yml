@@ -25,7 +25,16 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Windows installers
-        run: ./gradlew :desktop:packageMsi :desktop:packageExe :desktop:createDistributable --stacktrace
+        run: ./gradlew :desktop:createDistributable :desktop:packageMsi :desktop:packageExe --stacktrace
+
+      - name: Dump packaging logs on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse desktop/build/compose/logs -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Output "===== $($_.FullName) ====="
+            Get-Content $_.FullName -ErrorAction SilentlyContinue
+          }
 
       - name: Collect artifacts
         shell: pwsh

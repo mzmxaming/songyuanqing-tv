@@ -25,31 +25,31 @@ class SimpleLruCache<K : Any, V : Any>(private val maxEntries: Int) {
     /** 单调时钟起点，用于计算相对过期时刻。 */
     private val origin = TimeSource.Monotonic.markNow()
 
+    /** 跨平台互斥锁，保证多线程读写安全。 */
+    private val lock = PlatformLock()
+
     /**
      * 底层存储。
      *
-     * 说明：`accessOrder = true` 让每次读取都会把条目移到队尾，`removeEldestEntry` 据此淘汰队首，
-     *      即「最久未使用」的条目。
+     * 说明：LinkedHashMap 在 Kotlin/Native 中不可被继承，因此不使用 JVM 的 accessOrder 机制，
+     *      而是在每次命中时「先移除再放回」，利用插入顺序把最近访问的条目移到队尾。
      */
-    private val store = object : LinkedHashMap<K, Entry<V>>(maxEntries, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, Entry<V>>?): Boolean =
-            size > maxEntries
-    }
+    private val store = LinkedHashMap<K, Entry<V>>()
 
     /**
      * 读取缓存。
      *
-     * 功能：命中且未过期时返回数据；命中但已过期时移除并返回 null。
+     * 功能：命中且未过期时返回数据并刷新其访问顺序；命中但已过期时移除并返回 null。
      * 参数：key —— 缓存键。
      * 返回值：V? —— 缓存数据；未命中或已过期返回 null。
      */
-    fun get(key: K): V? = synchronized(store) {
-        val entry = store[key] ?: return null
+    fun get(key: K): V? = lock.withLock {
+        val entry = store.remove(key) ?: return@withLock null
         if (entry.expireAtMs in 1..nowMs()) {
-            store.remove(key)
-            return null
+            return@withLock null
         }
-        return entry.value
+        store[key] = entry
+        entry.value
     }
 
     /**
@@ -60,7 +60,14 @@ class SimpleLruCache<K : Any, V : Any>(private val maxEntries: Int) {
      */
     fun put(key: K, value: V, ttlMs: Long = 0L) {
         val expireAt = if (ttlMs > 0L) nowMs() + ttlMs else 0L
-        synchronized(store) { store[key] = Entry(value, expireAt) }
+        lock.withLock {
+            store.remove(key)
+            store[key] = Entry(value, expireAt)
+            while (store.size > maxEntries) {
+                val eldestKey = store.keys.firstOrNull() ?: break
+                store.remove(eldestKey)
+            }
+        }
     }
 
     /**
@@ -70,7 +77,7 @@ class SimpleLruCache<K : Any, V : Any>(private val maxEntries: Int) {
      * 返回值：无。
      */
     fun clear() {
-        synchronized(store) { store.clear() }
+        lock.withLock { store.clear() }
     }
 
     /**

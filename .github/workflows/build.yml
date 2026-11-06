@@ -252,7 +252,7 @@ jobs:
       - name: Rename IPA
         run: |
           cd "$RUNNER_TEMP/ipa"
-          for f in *.ipa; do mv "$f" "SongyuanqingTV-1.0.0.ipa"; done
+          for f in *.ipa; do mv "$f" "SongyuanqingTV-1.2.0.ipa"; done
           ls -lh
 
       - name: Upload IPA

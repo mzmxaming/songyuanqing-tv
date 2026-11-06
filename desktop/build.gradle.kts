@@ -33,7 +33,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(*formats.toTypedArray())
             packageName = "SongyuanqingTV"
-            packageVersion = "1.0.0"
+            packageVersion = "1.2.0"
             // WiX 的 light.exe 在非中文代码页（如 CI 的 en-US）下无法处理中文元数据，会以退出码 311 失败，
             // 因此安装包元信息保持 ASCII；界面内的中文不受影响。
             description = "Songyuanqing TV Desktop - multi-source movie streaming"

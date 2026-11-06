@@ -21,7 +21,8 @@
 | --- | --- | --- |
 | Windows | MSI / EXE / 便携版 | 播放依赖本机安装的 VLC（libVLC） |
 | macOS | DMG / .app | 播放依赖本机安装的 VLC |
-| iOS | 可构建的 Xcode 工程 | 播放使用系统 AVPlayer；模拟器可直接构建，真机安装需 Apple 开发者证书签名 |
+| Linux / 麒麟 | .deb / .rpm / 便携 tar.gz | 银河麒麟 V10（Debian 系）用 deb，中标麒麟（RHEL 系）用 rpm；播放依赖本机安装 VLC |
+| iOS | 已签名 IPA / Xcode 工程 | 播放使用系统 AVPlayer；Ad Hoc 签名，仅描述文件内的设备可安装 |
 
 ## 工程结构
 
@@ -52,13 +53,28 @@ multiplatform/
 ./gradlew :desktop:packageDmg
 ```
 
+## Linux / 麒麟 安装
+
+```bash
+# 银河麒麟 V10 / Ubuntu（Debian 系）
+sudo apt install -y vlc
+sudo dpkg -i songyuanqing-tv_1.0.0_amd64.deb
+
+# 中标麒麟 / 麒麟信安（RHEL 系）
+sudo dnf install -y vlc
+sudo rpm -ivh songyuanqing-tv-1.0.0-1.x86_64.rpm
+```
+
+便携包解压后直接运行 `SongyuanqingTV/bin/SongyuanqingTV`，同样需要系统已安装 VLC。
+
 ## 自动打包
 
-推送到 `main` 或打 `v*` 标签时，GitHub Actions 会分别在 `windows-latest` 与 `macos-latest` 上构建安装包：
+推送到 `main` 或打 `v*` 标签时，GitHub Actions 会分别在 `windows-latest`、`macos-latest`、`ubuntu-latest` 上构建安装包：
 
 - Windows：`.msi`、`.exe`、便携版 zip
 - macOS：`.dmg`、`.app`
-- iOS：`shared` 框架产物
+- Linux / 麒麟：`.deb`、`.rpm`、便携 tar.gz
+- iOS：已签名 `.ipa`（标签构建）与导航框架产物
 
 ## 免责声明
 

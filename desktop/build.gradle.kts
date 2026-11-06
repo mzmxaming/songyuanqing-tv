@@ -25,7 +25,9 @@ compose.desktop {
         val formats = when {
             hostOs.contains("win") -> listOf(TargetFormat.Msi, TargetFormat.Exe)
             hostOs.contains("mac") -> listOf(TargetFormat.Dmg)
-            else -> listOf(TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.AppImage)
+            // AppImage 在当前 Compose 版本下是空转任务（不产出文件），Linux 用 deb / rpm 即可覆盖
+            // 银河麒麟 V10（Debian 系）与中标麒麟（RHEL 系），再附一个便携 tar.gz。
+            else -> listOf(TargetFormat.Deb, TargetFormat.Rpm)
         }
 
         nativeDistributions {

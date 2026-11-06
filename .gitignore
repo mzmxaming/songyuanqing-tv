@@ -15,6 +15,7 @@ local.properties
 
 # Build outputs
 *.log
+*.err
 shot*.png
 tmp*.png
 dist/

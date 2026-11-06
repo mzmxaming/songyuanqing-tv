@@ -20,12 +20,14 @@
 
 ## 平台状态
 
-| 平台 | 形态 | 说明 |
-| --- | --- | --- |
-| Windows | MSI / EXE / 便携版 | 已内置 libVLC 3.0.21，安装即播，无需另装 VLC |
-| macOS | DMG / .app | 已内置 libVLC 3.0.21（Intel / Apple 芯片各自打包），无需另装 VLC |
-| Linux / 麒麟 | .deb / .rpm / 便携 tar.gz | 银河麒麟 V10（Debian 系）用 deb，中标麒麟（RHEL 系）用 rpm；播放使用系统 VLC（`apt install vlc` / `dnf install vlc`） |
-| iOS | 已签名 IPA / Xcode 工程 | 播放使用系统 AVPlayer；Ad Hoc 签名，仅描述文件内的设备可安装 |
+| 平台 | 架构 | 形态 | 说明 |
+| --- | --- | --- | --- |
+| Windows | x86_64 | MSI / EXE / 便携版 | 已内置 libVLC 3.0.21，安装即播，无需另装 VLC；Windows on ARM 设备可经系统 x64 模拟运行 |
+| macOS | arm64（Apple 芯片） | DMG | 已内置 libVLC 3.0.21，无需另装 VLC |
+| macOS | x86_64（Intel） | DMG | 同上 |
+| Linux / 麒麟 | x86_64 | .deb / .rpm / 便携 tar.gz | 银河麒麟 V10（Debian 系）用 deb，中标麒麟（RHEL 系）用 rpm；播放使用系统 VLC |
+| Linux / 麒麟 | aarch64（飞腾 / 鲲鹏） | .deb / .rpm / 便携 tar.gz | 同上，使用 aarch64 构建 |
+| iOS | arm64 | 已签名 IPA / Xcode 工程 | 播放使用系统 AVPlayer；Ad Hoc 签名，仅描述文件内的设备可安装 |
 
 ## 工程结构
 
@@ -59,25 +61,33 @@ multiplatform/
 ## Linux / 麒麟 安装
 
 ```bash
-# 银河麒麟 V10 / Ubuntu（Debian 系）
+# 银河麒麟 V10 / Ubuntu（Debian 系，x86_64）
 sudo apt install -y vlc
-sudo dpkg -i songyuanqing-tv_1.0.0_amd64.deb
+sudo dpkg -i songyuanqing-tv_1.2.3_amd64.deb
 
-# 中标麒麟 / 麒麟信安（RHEL 系）
+# 飞腾 / 鲲鹏（Debian 系，aarch64）
+sudo dpkg -i songyuanqing-tv_1.2.3_arm64.deb
+
+# 中标麒麟 / 麒麟信安（RHEL 系，x86_64）
 sudo dnf install -y vlc
-sudo rpm -ivh songyuanqing-tv-1.0.0-1.x86_64.rpm
+sudo rpm -ivh songyuanqing-tv-1.2.3-1.x86_64.rpm
+
+# 中标麒麟 / 麒麟信安（RHEL 系，aarch64）
+sudo rpm -ivh songyuanqing-tv-1.2.3-1.aarch64.rpm
 ```
 
 便携包解压后直接运行 `SongyuanqingTV/bin/SongyuanqingTV`；Windows / macOS 便携包同样已内置 libVLC。
 
 ## 自动打包
 
-推送到 `main` 或打 `v*` 标签时，GitHub Actions 会分别在 `windows-latest`、`macos-latest`、`ubuntu-latest` 上构建安装包：
+推送到 `main` 或打 `v*` 标签时，GitHub Actions 会在对应架构的托管 runner 上分别构建：
 
-- Windows：`.msi`、`.exe`、便携版 zip
-- macOS：`.dmg`、`.app`
-- Linux / 麒麟：`.deb`、`.rpm`、便携 tar.gz
-- iOS：已签名 `.ipa`（标签构建）与导航框架产物
+- Windows（`windows-latest`，x86_64）：`.msi`、`.exe`、便携版 zip
+- macOS（`macos-latest`，arm64）：`-arm64.dmg`
+- macOS（`macos-15-intel`，x86_64）：`-x86_64.dmg`
+- Linux / 麒麟（`ubuntu-latest`，x86_64）：`.deb`、`.rpm`、便携 tar.gz
+- Linux / 麒麟（`ubuntu-24.04-arm`，aarch64）：`.deb`、`.rpm`、便携 tar.gz
+- iOS（标签构建）：已签名 `.ipa`
 
 ## 免责声明
 

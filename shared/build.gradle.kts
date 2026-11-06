@@ -12,9 +12,12 @@ kotlin {
 
     // Apple 目标只在 macOS 主机上声明：本地（Windows）跳过，CI 的 macOS runner 会自动启用
     if (HostManager.hostIsMac) {
-        iosX64()
-        iosArm64()
-        iosSimulatorArm64()
+        listOf(iosX64(), iosArm64(), iosSimulatorArm64()).forEach { target ->
+            target.binaries.framework {
+                baseName = "Shared"
+                isStatic = true
+            }
+        }
     }
 
     sourceSets {

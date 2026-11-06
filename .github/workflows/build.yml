@@ -71,7 +71,7 @@ jobs:
           if-no-files-found: warn
 
   ios:
-    name: iOS Framework
+    name: iOS App
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -89,11 +89,24 @@ jobs:
         run: |
           ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 :shared:linkDebugFrameworkIosArm64 --stacktrace
 
+      - name: Build iOS app for simulator (unsigned)
+        run: |
+          cd iosApp
+          xcodebuild -project iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
       - name: Upload iOS frameworks
         uses: actions/upload-artifact@v4
         with:
           name: ios-frameworks
-          path: shared/build/bin/ios*/**/*.framework
+          path: |
+            shared/build/bin/ios*/**/*.framework
+            iosApp/build/Debug-iphonesimulator/*.app
           if-no-files-found: warn
 
   release:

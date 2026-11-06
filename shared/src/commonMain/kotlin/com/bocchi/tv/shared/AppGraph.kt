@@ -20,8 +20,8 @@ object AppGraph {
     /** 跨平台键值存储（桌面为 Java Preferences，iOS 为 NSUserDefaults）。 */
     private val settings: Settings by lazy { Settings() }
 
-    /** 全局 HTTP 客户端（连接池复用）。 */
-    private val httpClient by lazy { createHttpClient() }
+    /** 全局 HTTP 客户端（连接池复用）。iOS 端加载海报时也会复用该客户端。 */
+    internal val httpClient by lazy { createHttpClient() }
 
     /** 数据源仓库。 */
     val sourceStore: SourceStore by lazy { SourceStore(settings) }

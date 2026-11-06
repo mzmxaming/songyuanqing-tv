@@ -21,7 +21,7 @@
 | --- | --- | --- |
 | Windows | MSI / EXE / 便携版 | 播放依赖本机安装的 VLC（libVLC） |
 | macOS | DMG / .app | 播放依赖本机安装的 VLC |
-| iOS | 共享框架 / 工程 | 播放使用系统 AVPlayer |
+| iOS | 可构建的 Xcode 工程 | 播放使用系统 AVPlayer；模拟器可直接构建，真机安装需 Apple 开发者证书签名 |
 
 ## 工程结构
 

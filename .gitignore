@@ -31,3 +31,7 @@ Thumbs.db
 *.cer
 *.mobileprovision
 isocert/
+
+# 本地验证截图
+s*.png
+t*.png

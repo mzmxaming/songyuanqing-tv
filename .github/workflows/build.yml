@@ -72,6 +72,7 @@ jobs:
 
       - name: Rename artifacts with arch suffix
         run: |
+          echo "host arch: $(uname -m)"
           cd desktop/build/compose/binaries/main/dmg
           for f in *.dmg; do
             base="${f%.dmg}"
@@ -89,7 +90,8 @@ jobs:
 
   macos-intel:
     name: macOS Package (x86_64 / Intel)
-    runs-on: macos-13
+    # macos-13 已被 GitHub 下线（作业会永久排队），Intel 镜像改用 macos-15-intel
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -107,6 +109,7 @@ jobs:
 
       - name: Rename artifacts with arch suffix
         run: |
+          echo "host arch: $(uname -m)"
           cd desktop/build/compose/binaries/main/dmg
           for f in *.dmg; do
             base="${f%.dmg}"
@@ -193,6 +196,7 @@ jobs:
 
       - name: Collect artifacts
         run: |
+          echo "host arch: $(uname -m)"
           mkdir -p dist
           cp desktop/build/compose/binaries/main/deb/*.deb dist/ 2>/dev/null || true
           cp desktop/build/compose/binaries/main/rpm/*.rpm dist/ 2>/dev/null || true
@@ -241,6 +245,7 @@ jobs:
 
       - name: Collect artifacts
         run: |
+          echo "host arch: $(uname -m)"
           mkdir -p dist
           cp desktop/build/compose/binaries/main/deb/*.deb dist/ 2>/dev/null || true
           cp desktop/build/compose/binaries/main/rpm/*.rpm dist/ 2>/dev/null || true

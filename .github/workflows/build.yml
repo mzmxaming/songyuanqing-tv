@@ -135,9 +135,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-assets/**/*.msi
-            release-assets/**/*.exe
-            release-assets/**/*.zip
-            release-assets/**/*.dmg
+            release-assets/windows-packages/*.msi
+            release-assets/windows-packages/*.exe
+            release-assets/windows-packages/*.zip
+            release-assets/macos-packages/dmg/*.dmg
           draft: false
           generate_release_notes: true

@@ -23,9 +23,11 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Dmg)
             packageName = "SongyuanqingTV"
             packageVersion = "1.0.0"
-            description = "松源情·TV 桌面版 - 多源聚合影视点播"
+            // WiX 的 light.exe 在非中文代码页（如 CI 的 en-US）下无法处理中文元数据，会以退出码 311 失败，
+            // 因此安装包元信息保持 ASCII；界面内的中文不受影响。
+            description = "Songyuanqing TV Desktop - multi-source movie streaming"
             vendor = "Chen Guangming"
-            copyright = "APP 设计开发：陈光明"
+            copyright = "(c) Chen Guangming"
             modules("java.sql", "java.naming")
 
             windows {

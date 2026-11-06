@@ -69,15 +69,15 @@ class MediaUrlResolver(
         if (parseApi.isNotEmpty()) {
             buildParseRequestUrl(parseApi, raw)?.let { requestUrl ->
                 fetchText(requestUrl)?.let { body ->
-                    extractMediaUrl(body)?.let { return it }
+                    extractMediaUrl(body, requestUrl)?.let { return it }
                 }
             }
         }
         fetchText(raw)?.let { body ->
-            extractMediaUrl(body)?.let { return it }
+            extractMediaUrl(body, raw)?.let { return it }
             extractRedirectUrl(body, raw)?.let { redirectUrl ->
                 fetchText(redirectUrl)?.let { nested ->
-                    extractMediaUrl(nested)?.let { return it }
+                    extractMediaUrl(nested, redirectUrl)?.let { return it }
                 }
             }
         }
@@ -138,13 +138,20 @@ class MediaUrlResolver(
     /**
      * 从网页内容中提取媒体地址。
      *
-     * 功能：先找完整的 http(s) 直链，再找协议相对地址（`//cdn/x.m3u8`）并补全为 https。
-     * 参数：body —— 网页文本。
+     * 功能：依次查找完整 http(s) 直链、协议相对地址（`//cdn/x.m3u8`）与页面内相对路径
+     *      （如 `var main = "/20250923/xxx/index.m3u8?sign=..."`，多数采集站的分享页是这种形式）。
+     *      相对路径需要 baseUrl 才能补全为绝对地址。
+     * 参数：body —— 网页文本；baseUrl —— 当前页面地址（用于补全相对路径，可为 null）。
      * 返回值：String? —— 提取到的媒体地址；没有则返回 null。
      */
-    fun extractMediaUrl(body: String): String? {
+    fun extractMediaUrl(body: String, baseUrl: String? = null): String? {
         ABSOLUTE_MEDIA_REGEX.find(body)?.let { return it.value }
         PROTOCOL_RELATIVE_MEDIA_REGEX.find(body)?.let { return "https:${it.value}" }
+        if (baseUrl != null) {
+            RELATIVE_MEDIA_REGEX.find(body)?.groupValues?.getOrNull(1)?.let { path ->
+                absoluteUrl(path, baseUrl)?.let { return it }
+            }
+        }
         return null
     }
 
@@ -171,17 +178,18 @@ class MediaUrlResolver(
     private fun absoluteUrl(target: String, baseUrl: String): String? {
         if (target.startsWith("http://") || target.startsWith("https://")) return target
         if (target.startsWith("//")) return "https:$target"
+        val normalized = if (target.startsWith("./")) target.removePrefix("./") else target
         return runCatching {
             val base = URLBuilder(baseUrl).build()
             val origin = buildString {
                 append(base.protocol.name).append("://").append(base.host)
                 if (base.port != base.protocol.defaultPort) append(':').append(base.port)
             }
-            if (target.startsWith("/")) {
-                origin + target
+            if (normalized.startsWith("/")) {
+                origin + normalized
             } else {
                 val directory = base.encodedPath.substringBeforeLast('/', "")
-                "$origin$directory/$target"
+                "$origin$directory/$normalized"
             }
         }.getOrNull()
     }
@@ -215,6 +223,10 @@ class MediaUrlResolver(
         /** 网页中的协议相对媒体地址。 */
         val PROTOCOL_RELATIVE_MEDIA_REGEX =
             Regex("""//[^\s"'<>\\]+\.(?:m3u8|mp4)(?:\?[^\s"'<>\\]*)?""", RegexOption.IGNORE_CASE)
+
+        /** 网页中的相对媒体路径（如 `var main = "/2025/xxx/index.m3u8?sign=..."`）。 */
+        val RELATIVE_MEDIA_REGEX =
+            Regex("""["']((?:\.{0,2}/)?[^"'<>\s\\]+\.(?:m3u8|mp4)(?:\?[^"'<>\s\\]*)?)["']""", RegexOption.IGNORE_CASE)
 
         /** iframe 引用。 */
         val IFRAME_REGEX = Regex("""<iframe[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)

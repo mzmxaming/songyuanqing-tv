@@ -57,6 +57,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import javax.swing.SwingUtilities
 
+/** 判定「播到结尾」的容差（毫秒）：进度距离总时长小于该值才算正常结束。 */
+private const val END_TOLERANCE_MS = 5_000L
+
+/** 起播超时（毫秒）：提交播放后多久仍无进度就提示线路不可用。 */
+private const val START_TIMEOUT_MS = 12_000L
+
 /**
  * 播放页。
  *
@@ -94,18 +100,27 @@ fun PlayerScreen(
     var volume by remember { mutableStateOf(80) }
     var autoNext by remember { mutableStateOf(true) }
     var videoAspect by remember { mutableStateOf<Float?>(null) }
+    /** 本次提交播放的时间戳（0 表示未在等待起播），用于起播超时提示。 */
+    var playStartedAt by remember { mutableStateOf(0L) }
 
     // 播放引擎初始化：失败时给出可读提示；监听器必须初始化成功后再注册。
     LaunchedEffect(Unit) {
         val result = withContext(Dispatchers.IO) { controller.initialize() }
         if (result.available) {
             controller.setVolume(volume)
-            controller.setOnFinished {
-                if (!autoNext) return@setOnFinished
-                val lines = detail?.lines ?: return@setOnFinished
-                val episodes = lines.getOrNull(lineIndex)?.episodes ?: return@setOnFinished
-                if (episodeIndex + 1 < episodes.size) {
-                    SwingUtilities.invokeLater { episodeIndex += 1 }
+            controller.setOnPlaybackStopped {
+                // VLC 的 error 事件在线路短暂重试时也会触发，必须先看进度再决定：
+                // 只有「已播到接近结尾」才算正常结束并自动连播，否则提示切换线路，避免一路跳到最后一集。
+                SwingUtilities.invokeLater {
+                    val nearEnd = totalMs > 0L && elapsedMs >= totalMs - END_TOLERANCE_MS
+                    when {
+                        nearEnd && autoNext -> {
+                            val episodes = detail?.lines?.getOrNull(lineIndex)?.episodes.orEmpty()
+                            if (episodeIndex + 1 < episodes.size) episodeIndex += 1
+                        }
+
+                        !nearEnd -> statusMessage = "该线路播放失败，请切换片源或线路"
+                    }
                 }
             }
         } else {
@@ -144,6 +159,7 @@ fun PlayerScreen(
             statusMessage = "该集地址无法解析为可播放的视频，请尝试切换线路"
         } else if (controller.play(mediaUrl)) {
             statusMessage = null
+            playStartedAt = System.currentTimeMillis()
             val seekTo = pendingSeek
             if (seekTo > 0L) {
                 delay(900)
@@ -167,6 +183,17 @@ fun PlayerScreen(
             } ?: videoAspect
             if (tick % 10 == 0 && total > 0) {
                 saveHistory(current, total, currentMatch, detail, lineIndex, episodeIndex)
+            }
+            // 进度真正开始走，说明线路已恢复，清掉之前的失败提示
+            if (current > 0L && !isPreparing && statusMessage != null) {
+                statusMessage = null
+            }
+            // 起播看门狗：提交播放后 12 秒仍拿不到任何进度，说明该线路不可用，给出提示而不是一直黑屏
+            if (current > 0L || total > 0L) {
+                playStartedAt = 0L
+            } else if (playStartedAt > 0L && System.currentTimeMillis() - playStartedAt > START_TIMEOUT_MS) {
+                statusMessage = "该线路播放失败，请切换片源或线路"
+                playStartedAt = 0L
             }
             tick++
             delay(500)
@@ -223,12 +250,11 @@ fun PlayerScreen(
             VideoArea(
                 controller = controller,
                 engineError = engineError,
-                isPreparing = isPreparing,
-                statusMessage = statusMessage,
                 isPortrait = isPortrait,
                 aspect = aspect,
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
+            StatusStrip(isPreparing = isPreparing, statusMessage = statusMessage)
             ControlBar(
                 isFullscreen = true,
                 elapsedMs = elapsedMs,
@@ -262,12 +288,11 @@ fun PlayerScreen(
             VideoArea(
                 controller = controller,
                 engineError = engineError,
-                isPreparing = isPreparing,
-                statusMessage = statusMessage,
                 isPortrait = isPortrait,
                 aspect = aspect,
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
+            StatusStrip(isPreparing = isPreparing, statusMessage = statusMessage)
             ControlBar(
                 isFullscreen = false,
                 elapsedMs = elapsedMs,
@@ -355,16 +380,14 @@ private fun saveHistory(
 /**
  * 视频画面区域。
  *
- * 参数：controller 播放器；engineError 引擎错误；isPreparing 是否解析中；statusMessage 状态提示；
- *      isPortrait 是否竖屏画幅；aspect 画幅比例；modifier 布局修饰。
+ * 参数：controller 播放器；engineError 引擎错误；isPortrait 是否竖屏画幅；
+ *      aspect 画幅比例；modifier 布局修饰。
  * 返回值：无。
  */
 @Composable
 private fun VideoArea(
     controller: VlcPlayerController,
     engineError: String?,
-    isPreparing: Boolean,
-    statusMessage: String?,
     isPortrait: Boolean,
     aspect: Float?,
     modifier: Modifier = Modifier
@@ -390,24 +413,33 @@ private fun VideoArea(
                 modifier = Modifier.fillMaxSize()
             )
         }
-
-        if (isPreparing) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-        }
-        statusMessage?.let { message ->
-            Text(
-                text = message,
-                color = Color.White,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xCC000000))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            )
-        }
     }
+}
+
+/**
+ * 播放状态提示条。
+ *
+ * 功能：视频画面由 Swing/AWT 组件承载，Compose 文本叠在画面上会被遮住，
+ *      因此把「正在解析 / 线路失败」等提示放在画面下方的独立区域。
+ * 参数：isPreparing 是否正在解析地址；statusMessage 提示文案。
+ * 返回值：无。
+ */
+@Composable
+private fun StatusStrip(isPreparing: Boolean, statusMessage: String?) {
+    val text = when {
+        isPreparing -> "正在解析播放地址…"
+        statusMessage != null -> statusMessage
+        else -> null
+    } ?: return
+    Text(
+        text = text,
+        color = if (statusMessage == null) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFFFFB4AB),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+    )
 }
 
 /**

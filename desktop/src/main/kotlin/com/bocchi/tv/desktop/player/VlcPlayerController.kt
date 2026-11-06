@@ -279,17 +279,18 @@ class VlcPlayerController {
     }
 
     /**
-     * 注册播放结束回调。
+     * 注册播放停止回调。
      *
-     * 功能：用于实现「自动播放下一集」；播放失败也走同一回调，避免界面停在黑屏。
-     * 参数：onFinished —— 播放结束或出错时触发。
+     * 功能：播放结束与播放出错都会回调，由界面根据当前进度判断是「正常结束」还是「播放失败」，
+     *      避免把线路短暂重试误当成播放完毕而自动跳到下一集。
+     * 参数：onStopped —— 播放结束或出错时触发。
      * 返回值：无。
      */
-    fun setOnFinished(onFinished: () -> Unit) {
+    fun setOnPlaybackStopped(onStopped: () -> Unit) {
         player?.events()?.addMediaPlayerEventListener(
             object : MediaPlayerEventAdapter() {
-                override fun finished(mediaPlayer: MediaPlayer) = onFinished()
-                override fun error(mediaPlayer: MediaPlayer) = onFinished()
+                override fun finished(mediaPlayer: MediaPlayer) = onStopped()
+                override fun error(mediaPlayer: MediaPlayer) = onStopped()
             }
         )
     }

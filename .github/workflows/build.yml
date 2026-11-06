@@ -151,10 +151,12 @@ jobs:
           mkdir -p dist
           cp desktop/build/compose/binaries/main/deb/*.deb dist/ 2>/dev/null || true
           cp desktop/build/compose/binaries/main/rpm/*.rpm dist/ 2>/dev/null || true
-          cp desktop/build/compose/binaries/main/appimage/*.AppImage dist/ 2>/dev/null || true
+          find desktop/build/compose/binaries/main -name "*.AppImage" -exec cp {} dist/ \; 2>/dev/null || true
           APP=$(ls -d desktop/build/compose/binaries/main/app/*/ | head -n 1)
           APP=${APP%/}
           tar -czf dist/songyuanqing-tv-linux-portable.tar.gz -C "$(dirname "$APP")" "$(basename "$APP")"
+          echo "--- 产物目录 ---"
+          find desktop/build/compose/binaries/main -maxdepth 2 -type d
           ls -lh dist
 
       - name: Upload artifacts

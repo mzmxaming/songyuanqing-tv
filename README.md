@@ -63,18 +63,21 @@ multiplatform/
 ```bash
 # 银河麒麟 V10 / Ubuntu（Debian 系，x86_64）
 sudo apt install -y vlc
-sudo dpkg -i songyuanqing-tv_1.2.3_amd64.deb
+sudo apt install ./songyuanqing-tv_1.2.4_amd64.deb
 
 # 飞腾 / 鲲鹏（Debian 系，aarch64）
-sudo dpkg -i songyuanqing-tv_1.2.3_arm64.deb
+sudo apt install ./songyuanqing-tv_1.2.4_arm64.deb
 
 # 中标麒麟 / 麒麟信安（RHEL 系，x86_64）
 sudo dnf install -y vlc
-sudo rpm -ivh songyuanqing-tv-1.2.3-1.x86_64.rpm
+sudo rpm -ivh songyuanqing-tv-1.2.4-1.x86_64.rpm
 
 # 中标麒麟 / 麒麟信安（RHEL 系，aarch64）
-sudo rpm -ivh songyuanqing-tv-1.2.3-1.aarch64.rpm
+sudo rpm -ivh songyuanqing-tv-1.2.4-1.aarch64.rpm
 ```
+
+> deb 使用 `apt install ./xxx.deb` 安装（会自动补齐依赖）；`dpkg -i` 不会自动装依赖。
+> 若之前装过旧版且停在“未配置”状态，先执行 `sudo dpkg -r songyuanqing-tv` 清掉再装新版。
 
 便携包解压后直接运行 `SongyuanqingTV/bin/SongyuanqingTV`；Windows / macOS 便携包同样已内置 libVLC。
 

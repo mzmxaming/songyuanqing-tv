@@ -186,6 +186,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y fakeroot rpm
 
+      - name: Bundle libVLC for Linux package
+        run: |
+          # 在 Ubuntu 20.04 容器里取 libVLC 及插件（与银河麒麟 V10 SP1 同代 glibc），
+          # 让 Linux 包也做到开箱即播，不再依赖用户系统安装 VLC。
+          docker run --rm -v "$GITHUB_WORKSPACE:/ws" -w /ws ubuntu:20.04 \
+            bash scripts/prepare-linux-vlc.sh
+          # 容器以 root 建目录，交还给 runner 用户，否则后续 Gradle 无法写入
+          sudo chown -R "$(id -u):$(id -g)" desktop/build
+
       - name: Build Linux packages
         run: ./gradlew :desktop:packageDeb :desktop:packageRpm :desktop:createDistributable --stacktrace
 
@@ -253,6 +262,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y fakeroot rpm
+
+      - name: Bundle libVLC for Linux package
+        run: |
+          # 同上，arm64 由 Docker 自动拉取对应架构的 ubuntu:20.04 镜像
+          docker run --rm -v "$GITHUB_WORKSPACE:/ws" -w /ws ubuntu:20.04 \
+            bash scripts/prepare-linux-vlc.sh
+          sudo chown -R "$(id -u):$(id -g)" desktop/build
 
       - name: Build Linux packages (aarch64)
         run: ./gradlew :desktop:packageDeb :desktop:packageRpm :desktop:createDistributable --stacktrace
@@ -388,7 +404,7 @@ jobs:
       - name: Rename IPA
         run: |
           cd "$RUNNER_TEMP/ipa"
-          for f in *.ipa; do mv "$f" "SongyuanqingTV-1.2.4.ipa"; done
+          for f in *.ipa; do mv "$f" "SongyuanqingTV-1.2.5.ipa"; done
           ls -lh
 
       - name: Upload IPA

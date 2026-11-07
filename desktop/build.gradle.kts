@@ -27,9 +27,14 @@ val hostIsArm = System.getProperty("os.arch").lowercase().contains("aarch64")
  */
 val appResourcesRoot = layout.buildDirectory.dir("appResources")
 
-/** 本次构建要落位的 libVLC 目录（仅 Windows / macOS 内置，Linux 走系统 VLC）。 */
-fun stagedVlcDir(): File =
-    appResourcesRoot.get().asFile.resolve(if (hostIsWindows) "windows/vlc" else "macos/vlc")
+/** 本次构建要落位的 libVLC 目录（Windows / macOS 由构建任务下载；Linux 由 CI 容器准备）。 */
+fun stagedVlcDir(): File = appResourcesRoot.get().asFile.resolve(
+    when {
+        hostIsWindows -> "windows/vlc"
+        hostIsMac -> "macos/vlc"
+        else -> "linux/vlc"
+    }
+)
 
 /**
  * 下载文件（存在且非空则跳过）。
@@ -207,7 +212,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(*formats.toTypedArray())
             packageName = "SongyuanqingTV"
-            packageVersion = "1.2.4"
+            packageVersion = "1.2.5"
             // 随包内置 libVLC，用户无需另行安装 VLC
             appResourcesRootDir.set(appResourcesRoot)
             // WiX 的 light.exe 在非中文代码页（如 CI 的 en-US）下无法处理中文元数据，会以退出码 311 失败，

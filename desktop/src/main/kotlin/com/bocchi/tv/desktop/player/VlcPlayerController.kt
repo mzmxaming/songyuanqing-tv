@@ -138,7 +138,12 @@ class VlcPlayerController {
             System.setProperty("jna.library.path", libDir.absolutePath)
         }
         if (pluginsDir != null) {
-            applyPluginPath(pluginsDir)
+            applyEnv("VLC_PLUGIN_PATH", pluginsDir.absolutePath)
+            // Linux 内置包把 lua 等运行数据放在 <vlc>/share/vlc 下
+            val dataDir = File(pluginsDir.parentFile, "share/vlc")
+            if (dataDir.isDirectory) {
+                applyEnv("VLC_DATA_PATH", dataDir.absolutePath)
+            }
         }
         val created = CallbackMediaPlayerComponent()
         videoSurface.add(created.videoSurfaceComponent(), BorderLayout.CENTER)
@@ -149,17 +154,17 @@ class VlcPlayerController {
     }
 
     /**
-     * 指定 VLC 插件目录。
+     * 设置进程级环境变量。
      *
-     * 功能：Windows 下 libVLC 会自动在同级目录查找 plugins，无需额外设置；
-     *      macOS / Linux 通过 libc 的 setenv 设置 VLC_PLUGIN_PATH（Java 进程无法直接修改环境变量）。
-     * 参数：dir —— 插件目录。
+     * 功能：libVLC 在初始化时读取 VLC_PLUGIN_PATH / VLC_DATA_PATH，Java 无法通过 System.getenv 修改，
+     *      因此走 libc 的 setenv。Windows 下 libVLC 会自动在同一目录查找 plugins，无需设置。
+     * 参数：name —— 变量名；value —— 变量值。
      * 返回值：无。
      */
-    private fun applyPluginPath(dir: File) {
+    private fun applyEnv(name: String, value: String) {
         if (RuntimeUtil.isWindows()) return
         runCatching {
-            Native.load("c", LibC::class.java).setenv("VLC_PLUGIN_PATH", dir.absolutePath, 1)
+            Native.load("c", LibC::class.java).setenv(name, value, 1)
         }
     }
 

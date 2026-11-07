@@ -137,15 +137,20 @@ class VlcPlayerController {
         if (libDir != null) {
             System.setProperty("jna.library.path", libDir.absolutePath)
         }
-        if (pluginsDir != null) {
-            applyEnv("VLC_PLUGIN_PATH", pluginsDir.absolutePath)
-            // Linux 内置包把 lua 等运行数据放在 <vlc>/share/vlc 下
-            val dataDir = File(pluginsDir.parentFile, "share/vlc")
-            if (dataDir.isDirectory) {
-                applyEnv("VLC_DATA_PATH", dataDir.absolutePath)
+        val vlcArgs = buildList {
+            if (pluginsDir != null) {
+                // --plugin-path 是 libVLC 官方参数，不依赖 libc 的 setenv，作为主要手段
+                add("--plugin-path=${pluginsDir.absolutePath}")
+                applyEnv("VLC_PLUGIN_PATH", pluginsDir.absolutePath)
+                // Linux 内置包把 lua 等运行数据放在 <vlc>/share/vlc 下
+                val dataDir = File(pluginsDir.parentFile, "share/vlc")
+                if (dataDir.isDirectory) {
+                    applyEnv("VLC_DATA_PATH", dataDir.absolutePath)
+                }
             }
+            add("--no-video-title-show")
         }
-        val created = CallbackMediaPlayerComponent()
+        val created = CallbackMediaPlayerComponent(*vlcArgs.toTypedArray())
         videoSurface.add(created.videoSurfaceComponent(), BorderLayout.CENTER)
         videoSurface.revalidate()
         component = created

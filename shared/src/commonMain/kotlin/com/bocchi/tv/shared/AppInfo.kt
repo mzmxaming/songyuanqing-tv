@@ -12,7 +12,7 @@ object AppInfo {
     const val APP_NAME: String = "松源情·TV"
 
     /** 当前版本号。 */
-    const val VERSION: String = "1.2.5"
+    const val VERSION: String = "1.2.6"
 
     /** 开发者署名。 */
     const val DEVELOPER: String = "APP 设计开发：陈光明"

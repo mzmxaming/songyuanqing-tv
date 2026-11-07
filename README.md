@@ -25,7 +25,7 @@
 | Windows | x86_64 | MSI / EXE / 便携版 | 已内置 libVLC 3.0.21，安装即播，无需另装 VLC；Windows on ARM 设备可经系统 x64 模拟运行 |
 | macOS | arm64（Apple 芯片） | DMG | 已内置 libVLC 3.0.21，无需另装 VLC |
 | macOS | x86_64（Intel） | DMG | 同上 |
-| Linux / 麒麟 | x86_64 | .deb / .rpm / 便携 tar.gz | 银河麒麟 V10（Debian 系）用 deb，中标麒麟（RHEL 系）用 rpm；播放使用系统 VLC |
+| Linux / 麒麟 | x86_64 | .deb / .rpm / 便携 tar.gz | 已内置 libVLC 3.0.9.2 与插件，安装即播；银河麒麟 V10（Debian 系）用 deb，中标麒麟（RHEL 系）用 rpm |
 | Linux / 麒麟 | aarch64（飞腾 / 鲲鹏） | .deb / .rpm / 便携 tar.gz | 同上，使用 aarch64 构建 |
 | iOS | arm64 | 已签名 IPA / Xcode 工程 | 播放使用系统 AVPlayer；Ad Hoc 签名，仅描述文件内的设备可安装 |
 
@@ -62,21 +62,20 @@ multiplatform/
 
 ```bash
 # 银河麒麟 V10 / Ubuntu（Debian 系，x86_64）
-sudo apt install -y vlc
-sudo apt install ./songyuanqing-tv_1.2.4_amd64.deb
+sudo apt install ./songyuanqing-tv_1.2.6_amd64.deb
 
 # 飞腾 / 鲲鹏（Debian 系，aarch64）
-sudo apt install ./songyuanqing-tv_1.2.4_arm64.deb
+sudo apt install ./songyuanqing-tv_1.2.6_arm64.deb
 
 # 中标麒麟 / 麒麟信安（RHEL 系，x86_64）
-sudo dnf install -y vlc
-sudo rpm -ivh songyuanqing-tv-1.2.4-1.x86_64.rpm
+sudo rpm -ivh songyuanqing-tv-1.2.6-1.x86_64.rpm
 
 # 中标麒麟 / 麒麟信安（RHEL 系，aarch64）
-sudo rpm -ivh songyuanqing-tv-1.2.4-1.aarch64.rpm
+sudo rpm -ivh songyuanqing-tv-1.2.6-1.aarch64.rpm
 ```
 
-> deb 使用 `apt install ./xxx.deb` 安装（会自动补齐依赖）；`dpkg -i` 不会自动装依赖。
+> 播放器已随包内置，无需安装 VLC。
+> deb 请用 `apt install ./xxx.deb`（会自动补齐依赖）；`dpkg -i` 不会自动装依赖。
 > 若之前装过旧版且停在“未配置”状态，先执行 `sudo dpkg -r songyuanqing-tv` 清掉再装新版。
 
 便携包解压后直接运行 `SongyuanqingTV/bin/SongyuanqingTV`；Windows / macOS 便携包同样已内置 libVLC。

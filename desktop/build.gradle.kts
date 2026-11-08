@@ -212,7 +212,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(*formats.toTypedArray())
             packageName = "SongyuanqingTV"
-            packageVersion = "1.2.6"
+            packageVersion = "1.2.7"
             // 随包内置 libVLC，用户无需另行安装 VLC
             appResourcesRootDir.set(appResourcesRoot)
             // WiX 的 light.exe 在非中文代码页（如 CI 的 en-US）下无法处理中文元数据，会以退出码 311 失败，

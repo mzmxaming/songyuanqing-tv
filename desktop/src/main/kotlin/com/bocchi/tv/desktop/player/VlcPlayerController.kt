@@ -196,13 +196,17 @@ class VlcPlayerController {
     /**
      * 播放指定地址。
      *
-     * 参数：url —— 可播放地址（m3u8 / mp4）。
+     * 参数：url —— 可播放地址（m3u8 / mp4）；referer —— 可选的 Referer，用于通过部分源站的防盗链校验。
      * 返回值：Boolean —— 是否已提交播放。
      */
-    fun play(url: String): Boolean {
+    fun play(url: String, referer: String? = null): Boolean {
         val current = player ?: return false
+        println("[play] 媒体地址=$url")
         return runCatching {
-            current.media().play(url)
+            val options = buildList {
+                if (!referer.isNullOrBlank()) add(":http-referrer=$referer")
+            }
+            current.media().play(url, *options.toTypedArray())
             true
         }.getOrDefault(false)
     }

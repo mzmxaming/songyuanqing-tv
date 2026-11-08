@@ -64,6 +64,24 @@ private const val END_TOLERANCE_MS = 5_000L
 private const val START_TIMEOUT_MS = 12_000L
 
 /**
+ * 取出媒体地址的来源站点。
+ *
+ * 功能：把 `https://host/path?q` 转换成正则化前的站点根地址 `https://host/`，
+ *      作为播放时的 Referer，用于通过部分源站的防盗链校验。
+ * 参数：url —— 媒体地址。
+ * 返回值：String? —— 站点根地址；地址不含协议时返回 null。
+ */
+private fun originOf(url: String): String? {
+    val schemeEnd = url.indexOf("://")
+    if (schemeEnd <= 0) return null
+    val rest = url.substring(schemeEnd + 3)
+    val slashIndex = rest.indexOf('/')
+    val hostPart = if (slashIndex < 0) rest else rest.substring(0, slashIndex)
+    if (hostPart.isBlank()) return null
+    return url.substring(0, schemeEnd) + "://" + hostPart + "/"
+}
+
+/**
  * 播放页。
  *
  * 功能：左侧为 VLC 画面与控制条，右侧为片源、线路与剧集；支持窗口全屏（F / 双击按钮 / Esc 退出）、
@@ -102,6 +120,8 @@ fun PlayerScreen(
     var videoAspect by remember { mutableStateOf<Float?>(null) }
     /** 本次提交播放的时间戳（0 表示未在等待起播），用于起播超时提示。 */
     var playStartedAt by remember { mutableStateOf(0L) }
+    /** 当前提交给播放器的媒体地址，用于失败提示时展示，便于用户反馈具体线路。 */
+    var currentMediaUrl by remember { mutableStateOf<String?>(null) }
 
     // 播放引擎初始化：失败时给出可读提示；监听器必须初始化成功后再注册。
     LaunchedEffect(Unit) {
@@ -154,10 +174,13 @@ fun PlayerScreen(
         val mediaUrl = withContext(Dispatchers.IO) {
             AppGraph.videoRepository.resolvePlayUrl(episode.url)
         }
+        println("[play] 源地址=${episode.url}")
+        println("[play] 解析结果=$mediaUrl")
         isPreparing = false
         if (mediaUrl == null) {
             statusMessage = "该集地址无法解析为可播放的视频，请尝试切换线路"
-        } else if (controller.play(mediaUrl)) {
+        } else if (controller.play(mediaUrl, originOf(mediaUrl))) {
+            currentMediaUrl = mediaUrl
             statusMessage = null
             playStartedAt = System.currentTimeMillis()
             val seekTo = pendingSeek
@@ -192,7 +215,12 @@ fun PlayerScreen(
             if (current > 0L || total > 0L) {
                 playStartedAt = 0L
             } else if (playStartedAt > 0L && System.currentTimeMillis() - playStartedAt > START_TIMEOUT_MS) {
-                statusMessage = "该线路播放失败，请切换片源或线路"
+                val shown = currentMediaUrl?.substringAfter("://")?.take(48)
+                statusMessage = if (shown != null) {
+                    "该线路播放失败（$shown），请切换片源或线路"
+                } else {
+                    "该线路播放失败，请切换片源或线路"
+                }
                 playStartedAt = 0L
             }
             tick++

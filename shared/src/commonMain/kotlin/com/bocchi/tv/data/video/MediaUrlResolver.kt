@@ -183,7 +183,9 @@ class MediaUrlResolver(
             val base = URLBuilder(baseUrl).build()
             val origin = buildString {
                 append(base.protocol.name).append("://").append(base.host)
-                if (base.port != base.protocol.defaultPort) append(':').append(base.port)
+                // 端口为 0 或负数表示未显式指定，此时不能拼冒号，否则会得到 `https://host:` 这类非法地址
+                val port = base.port
+                if (port > 0 && port != base.protocol.defaultPort) append(':').append(port)
             }
             if (normalized.startsWith("/")) {
                 origin + normalized

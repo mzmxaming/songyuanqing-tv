@@ -39,7 +39,8 @@ fun stagedVlcDir(): File = appResourcesRoot.get().asFile.resolve(
 /**
  * 下载文件（存在且非空则跳过）。
  *
- * 功能：按顺序尝试多个地址（国内镜像优先，官方源兜底），任一成功即结束。
+ * 功能：按顺序尝试多个地址（国内镜像优先，官方源兜底），整体重试 3 轮。
+ *      CI 上曾出现镜像偶发断连导致打包失败，重试可避免整条流水线失败。
  * @param urls 候选下载地址。
  * @param target 目标文件。
  */
@@ -48,25 +49,28 @@ fun downloadIfMissing(urls: List<String>, target: File) {
     target.parentFile.mkdirs()
     val temp = File(target.parentFile, target.name + ".part")
     var lastError: Exception? = null
-    for (url in urls) {
-        try {
-            println("下载 $url")
-            URI.create(url).toURL().openConnection().apply {
-                connectTimeout = 15_000
-                readTimeout = 120_000
-                setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; SongyuanqingTV-Build)")
-            }.getInputStream().use { input ->
-                temp.outputStream().use { output -> input.copyTo(output) }
+    for (attempt in 1..3) {
+        for (url in urls) {
+            try {
+                println("下载 $url（第 $attempt 次尝试）")
+                URI.create(url).toURL().openConnection().apply {
+                    connectTimeout = 15_000
+                    readTimeout = 120_000
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; SongyuanqingTV-Build)")
+                }.getInputStream().use { input ->
+                    temp.outputStream().use { output -> input.copyTo(output) }
+                }
+                if (temp.renameTo(target)) return
+                temp.copyTo(target, overwrite = true)
+                temp.delete()
+                return
+            } catch (error: Exception) {
+                lastError = error
+                println("下载失败（${error.message}），尝试下一个地址")
+                temp.delete()
             }
-            if (temp.renameTo(target)) return
-            temp.copyTo(target, overwrite = true)
-            temp.delete()
-            return
-        } catch (error: Exception) {
-            lastError = error
-            println("下载失败（${error.message}），尝试下一个地址")
-            temp.delete()
         }
+        if (attempt < 3) Thread.sleep(3_000)
     }
     throw IOException("libVLC 下载失败，请检查网络或手动放置到 ${target.parentFile.absolutePath}", lastError)
 }
@@ -101,6 +105,7 @@ val prepareBundledVlc = tasks.register("prepareBundledVlc") {
                 listOf(
                     "https://mirrors.tuna.tsinghua.edu.cn/videolan-ftp/$path",
                     "https://mirrors.aliyun.com/videolan/$path",
+                    "https://mirrors.ustc.edu.cn/videolan-ftp/$path",
                     "https://download.videolan.org/$path"
                 ),
                 zip
@@ -146,6 +151,7 @@ val prepareBundledVlc = tasks.register("prepareBundledVlc") {
                 listOf(
                     "https://mirrors.tuna.tsinghua.edu.cn/videolan-ftp/$path",
                     "https://mirrors.aliyun.com/videolan/$path",
+                    "https://mirrors.ustc.edu.cn/videolan-ftp/$path",
                     "https://download.videolan.org/$path"
                 ),
                 dmg

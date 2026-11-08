@@ -203,24 +203,8 @@ jobs:
         run: |
           find desktop/build/compose/logs -type f -exec sh -c 'echo "===== $1 ====="; cat "$1"' _ {} \; || true
 
-      - name: Patch deb dependencies for Debian 10 / 麒麟 V10
-        run: |
-          # Ubuntu 24.04 把 libasound2 / libpng16-16 改名成 t64 后缀，麒麟 V10、Debian 10 上并不存在；
-          # 改写成 dpkg 的二选一依赖，两种系统都能装。libmd0 经实测无任何 ELF 引用，直接移除。
-          shopt -s nullglob
-          for deb in desktop/build/compose/binaries/main/deb/*.deb; do
-            work=$(mktemp -d)
-            dpkg-deb -R "$deb" "$work/pkg"
-            ctl="$work/pkg/DEBIAN/control"
-            sed -i 's/libasound2t64/libasound2t64 | libasound2/g' "$ctl"
-            sed -i 's/libpng16-16t64/libpng16-16t64 | libpng16-16/g' "$ctl"
-            sed -i 's/libmd0, //g; s/, libmd0//g' "$ctl"
-            dpkg-deb -b "$work/pkg" "$work/patched.deb" > /dev/null
-            mv "$work/patched.deb" "$deb"
-            echo "--- $(basename "$deb") ---"
-            dpkg-deb -f "$deb" Depends
-            rm -rf "$work"
-          done
+      - name: Patch deb (dependencies + desktop shortcut)
+        run: bash scripts/patch-linux-deb.sh
 
       - name: Collect artifacts
         run: |
@@ -278,24 +262,8 @@ jobs:
         run: |
           find desktop/build/compose/logs -type f -exec sh -c 'echo "===== $1 ====="; cat "$1"' _ {} \; || true
 
-      - name: Patch deb dependencies for Debian 10 / 麒麟 V10
-        run: |
-          # Ubuntu 24.04 把 libasound2 / libpng16-16 改名成 t64 后缀，麒麟 V10、Debian 10 上并不存在；
-          # 改写成 dpkg 的二选一依赖，两种系统都能装。libmd0 经实测无任何 ELF 引用，直接移除。
-          shopt -s nullglob
-          for deb in desktop/build/compose/binaries/main/deb/*.deb; do
-            work=$(mktemp -d)
-            dpkg-deb -R "$deb" "$work/pkg"
-            ctl="$work/pkg/DEBIAN/control"
-            sed -i 's/libasound2t64/libasound2t64 | libasound2/g' "$ctl"
-            sed -i 's/libpng16-16t64/libpng16-16t64 | libpng16-16/g' "$ctl"
-            sed -i 's/libmd0, //g; s/, libmd0//g' "$ctl"
-            dpkg-deb -b "$work/pkg" "$work/patched.deb" > /dev/null
-            mv "$work/patched.deb" "$deb"
-            echo "--- $(basename "$deb") ---"
-            dpkg-deb -f "$deb" Depends
-            rm -rf "$work"
-          done
+      - name: Patch deb (dependencies + desktop shortcut)
+        run: bash scripts/patch-linux-deb.sh
 
       - name: Collect artifacts
         run: |
@@ -404,7 +372,7 @@ jobs:
       - name: Rename IPA
         run: |
           cd "$RUNNER_TEMP/ipa"
-          for f in *.ipa; do mv "$f" "SongyuanqingTV-1.2.7.ipa"; done
+          for f in *.ipa; do mv "$f" "SongyuanqingTV-1.2.8.ipa"; done
           ls -lh
 
       - name: Upload IPA

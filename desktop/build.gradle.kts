@@ -190,6 +190,15 @@ afterEvaluate {
         dependsOn(prepareBundledVlc)
         systemProperty("bundled.vlc.dir", stagedVlcDir().absolutePath)
     }
+
+    // 临时播放探针：仅用于本机排查起播失败，不参与发布
+    tasks.register<JavaExec>("probePlay") {
+        dependsOn(prepareBundledVlc, "jar")
+        mainClass.set("com.bocchi.tv.probe.ProbeKt")
+        classpath = files(tasks.named("jar")) + configurations["runtimeClasspath"]
+        systemProperty("bundled.vlc.dir", stagedVlcDir().absolutePath)
+        args = listOfNotNull(project.findProperty("probeUrl") as String?)
+    }
 }
 
 dependencies {
@@ -218,7 +227,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(*formats.toTypedArray())
             packageName = "SongyuanqingTV"
-            packageVersion = "1.2.7"
+            packageVersion = "1.2.8"
             // 随包内置 libVLC，用户无需另行安装 VLC
             appResourcesRootDir.set(appResourcesRoot)
             // WiX 的 light.exe 在非中文代码页（如 CI 的 en-US）下无法处理中文元数据，会以退出码 311 失败，
@@ -246,6 +255,8 @@ compose.desktop {
                 debMaintainer = "Chen Guangming <noreply@example.com>"
                 appCategory = "AudioVideo"
                 menuGroup = "AudioVideo"
+                // 桌面图标、菜单图标统一使用品牌图标
+                iconFile.set(project.file("app-icon.png"))
             }
         }
     }

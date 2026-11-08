@@ -16,6 +16,10 @@ import javax.swing.JPanel
 /** libVLC 动态库的候选文件名（Windows / macOS / Linux）。 */
 private val VLC_LIBRARY_NAMES = listOf("libvlc.dll", "libvlc.dylib", "libvlc.so", "libvlc.so.5")
 
+/** 请求媒体时使用的浏览器 UA，规避部分源站对播放器默认 UA 的拦截。 */
+private const val BROWSER_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+
 /**
  * 定位随包内置的 libVLC 目录。
  *
@@ -139,8 +143,8 @@ class VlcPlayerController {
         }
         val vlcArgs = buildList {
             if (pluginsDir != null) {
-                // --plugin-path 是 libVLC 官方参数，不依赖 libc 的 setenv，作为主要手段
-                add("--plugin-path=${pluginsDir.absolutePath}")
+                // 插件目录只能通过 VLC_PLUGIN_PATH 指定：
+                // VLC 3.0.9.x 已移除 --plugin-path 选项，传了会让 libvlc_new 直接返回 NULL。
                 applyEnv("VLC_PLUGIN_PATH", pluginsDir.absolutePath)
                 // Linux 内置包把 lua 等运行数据放在 <vlc>/share/vlc 下
                 val dataDir = File(pluginsDir.parentFile, "share/vlc")
@@ -162,15 +166,16 @@ class VlcPlayerController {
      * 设置进程级环境变量。
      *
      * 功能：libVLC 在初始化时读取 VLC_PLUGIN_PATH / VLC_DATA_PATH，Java 无法通过 System.getenv 修改，
-     *      因此走 libc 的 setenv。Windows 下 libVLC 会自动在同一目录查找 plugins，无需设置。
+     *      因此走 libc 的 setenv。部分精简系统没有 libc.so（开发包才提供），优先按 soname 加载 libc.so.6。
      * 参数：name —— 变量名；value —— 变量值。
      * 返回值：无。
      */
     private fun applyEnv(name: String, value: String) {
         if (RuntimeUtil.isWindows()) return
-        runCatching {
-            Native.load("c", LibC::class.java).setenv(name, value, 1)
-        }
+        val libc = runCatching { Native.load("libc.so.6", LibC::class.java) }
+            .recoverCatching { Native.load("c", LibC::class.java) }
+            .getOrNull() ?: return
+        runCatching { libc.setenv(name, value, 1) }
     }
 
     /**
@@ -203,7 +208,9 @@ class VlcPlayerController {
         val current = player ?: return false
         println("[play] 媒体地址=$url")
         return runCatching {
+            // 部分源站会按 UA 拦截播放器默认标识（VLC/3.0.x LibVLC/3.0.x），统一改用浏览器 UA
             val options = buildList {
+                add(":http-user-agent=$BROWSER_USER_AGENT")
                 if (!referer.isNullOrBlank()) add(":http-referrer=$referer")
             }
             current.media().play(url, *options.toTypedArray())

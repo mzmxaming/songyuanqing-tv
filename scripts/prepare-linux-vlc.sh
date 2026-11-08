@@ -22,6 +22,9 @@ mkdir -p "$OUT/lib" "$OUT/plugins" "$OUT/share"
 cp -a /usr/lib/*/vlc/plugins/. "$OUT/plugins/"
 cp -a /usr/lib/*/libvlc.so.5* "$OUT/lib/" 2>/dev/null || true
 cp -a /usr/lib/*/libvlccore.so.9* "$OUT/lib/" 2>/dev/null || true
+# 插件依赖的辅助库（libvlc_xcb_events / libvlc_pulse / libvlc_vdpau）也在 vlc 目录下，
+# 缺了会导致 xcb_x11 视频输出加载失败——有声音没画面。
+cp -a /usr/lib/*/vlc/*.so* "$OUT/lib/" 2>/dev/null || true
 cp -a /usr/share/vlc "$OUT/share/vlc" 2>/dev/null || true
 
 # 删除与播放无关的界面类插件，以及系统上生成的插件缓存（换目录后必须重建）
@@ -44,7 +47,7 @@ sort -u /tmp/vlc-deps.txt | while read -r lib; do
         */libstdc++.so*|*/libresolv.so*|*/libutil.so*|*/libnsl.so*|*/libanl.so*|*/libmvec.so*) continue ;;
         */libX11.so*|*/libXext.so*|*/libXau.so*|*/libXdmcp.so*|*/libxcb*.so*|*/libGL.so*|\
         */libGLX*|*/libEGL*|*/libGLdispatch*|*/libGLESv2*|*/libdrm.so*) continue ;;
-        */vlc/*) continue ;;
+        "$OUT"/*) continue ;;
     esac
     cp -L "$lib" "$OUT/lib/" || true
 done

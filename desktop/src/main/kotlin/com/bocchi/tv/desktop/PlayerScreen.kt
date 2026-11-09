@@ -223,6 +223,8 @@ fun PlayerScreen(
         }
         println("[play] 源地址=${episode.url}")
         println("[play] 解析结果=$mediaUrl")
+        // 等待界面完成布局：Linux 用嵌入式原生视频输出，窗口句柄未就绪时创建 vout 会失败
+        delay(if (retryCount == 0) 500L else 800L)
         isPreparing = false
         if (mediaUrl == null) {
             statusMessage = "该集地址无法解析为可播放的视频，请尝试切换线路"

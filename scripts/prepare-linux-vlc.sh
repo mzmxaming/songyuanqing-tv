@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # 为 Linux 安装包准备内置 libVLC。
-# 在 Ubuntu 20.04（glibc 2.31，与银河麒麟 V10 SP1 同代）容器内执行：
-#   docker run --rm -v "$PWD:/ws" -w /ws ubuntu:20.04 bash scripts/prepare-linux-vlc.sh
+# 在 Debian 11（bullseye，glibc 2.31，与银河麒麟 V10 SP1 同代）容器内执行：
+#   docker run --rm -v "$PWD:/ws" -w /ws debian:bullseye bash scripts/prepare-linux-vlc.sh
+# 选用 Debian 11 而非 Ubuntu 20.04：后者自带 VLC 3.0.9.2，处理 HLS 相对地址（AES 密钥、变体列表）
+# 时会拼出 `https://host:` 这样的残缺地址导致解复用失败；3.0.16 已修复。
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive

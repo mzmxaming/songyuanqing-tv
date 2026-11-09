@@ -8,6 +8,7 @@ import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery
 import uk.co.caprica.vlcj.player.base.MediaPlayer
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
 import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent
+import uk.co.caprica.vlcj.player.component.EmbeddedMediaPlayerComponent
 import uk.co.caprica.vlcj.player.embedded.EmbeddedMediaPlayer
 import java.awt.BorderLayout
 import java.io.File
@@ -73,8 +74,12 @@ class VlcPlayerController {
         isOpaque = true
     }
 
-    /** VLCJ 的 Swing 播放组件（内部完成解码后回调绘制）。 */
+    /** VLCJ 的回调渲染组件（Windows / macOS）：解码后把帧画到 Swing 面板上。 */
     private var component: CallbackMediaPlayerComponent? = null
+
+    /** VLCJ 的嵌入式组件（Linux）：使用 xcb_x11 原生窗口输出。
+     *  实测 VLC 3.0.9.2 不会触发回调渲染的 lock/unlock，只有原生窗口能出画面。 */
+    private var embeddedComponent: EmbeddedMediaPlayerComponent? = null
 
     /** 底层播放器实例。 */
     private var player: EmbeddedMediaPlayer? = null
@@ -154,11 +159,21 @@ class VlcPlayerController {
             }
             add("--no-video-title-show")
         }
-        val created = CallbackMediaPlayerComponent(*vlcArgs.toTypedArray())
-        videoSurface.add(created.videoSurfaceComponent(), BorderLayout.CENTER)
+        val created = if (System.getProperty("os.name").lowercase().contains("linux")) {
+            // Linux 用嵌入式原生窗口输出：VLC 3.0.9.2 不触发视频回调，回调渲染会一直黑屏
+            EmbeddedMediaPlayerComponent(*vlcArgs.toTypedArray()).also { embedded ->
+                embeddedComponent = embedded
+                videoSurface.add(embedded, BorderLayout.CENTER)
+                player = embedded.mediaPlayer()
+            }
+        } else {
+            CallbackMediaPlayerComponent(*vlcArgs.toTypedArray()).also { callback ->
+                component = callback
+                videoSurface.add(callback.videoSurfaceComponent(), BorderLayout.CENTER)
+                player = callback.mediaPlayer()
+            }
+        }
         videoSurface.revalidate()
-        component = created
-        player = created.mediaPlayer()
         isAvailable = true
     }
 
@@ -174,8 +189,13 @@ class VlcPlayerController {
         if (RuntimeUtil.isWindows()) return
         val libc = runCatching { Native.load("libc.so.6", LibC::class.java) }
             .recoverCatching { Native.load("c", LibC::class.java) }
-            .getOrNull() ?: return
-        runCatching { libc.setenv(name, value, 1) }
+            .getOrNull() ?: run {
+            println("[vlc] 无法加载 libc，环境变量 $name 未设置")
+            return
+        }
+        val result = runCatching { libc.setenv(name, value, 1) }.getOrDefault(-1)
+        val readBack = runCatching { libc.getenv(name)?.getString(0) }.getOrNull()
+        println("[vlc] $name=$value（setenv=$result，回读=$readBack）")
     }
 
     /**
@@ -186,6 +206,8 @@ class VlcPlayerController {
      */
     private interface LibC : Library {
         fun setenv(name: String, value: String, overwrite: Int): Int
+
+        fun getenv(name: String): com.sun.jna.Pointer?
     }
 
     /**
@@ -207,12 +229,17 @@ class VlcPlayerController {
     fun play(url: String, referer: String? = null): Boolean {
         val current = player ?: return false
         println("[play] 媒体地址=$url")
+        println("[play] 画面面板=${videoSurface.width}x${videoSurface.height}，子组件数=${videoSurface.componentCount}")
         return runCatching {
             // 部分源站会按 UA 拦截播放器默认标识（VLC/3.0.x LibVLC/3.0.x），统一改用浏览器 UA
+            val withOptions = System.getenv("TV_NO_MEDIA_OPTS") == null
             val options = buildList {
-                add(":http-user-agent=$BROWSER_USER_AGENT")
-                if (!referer.isNullOrBlank()) add(":http-referrer=$referer")
+                if (withOptions) {
+                    add(":http-user-agent=$BROWSER_USER_AGENT")
+                    if (!referer.isNullOrBlank()) add(":http-referrer=$referer")
+                }
             }
+            println("[play] 媒体选项=$options")
             current.media().play(url, *options.toTypedArray())
             true
         }.getOrDefault(false)
@@ -319,8 +346,10 @@ class VlcPlayerController {
     /** 释放播放器资源。 */
     fun release() {
         runCatching { component?.release() }
+        runCatching { embeddedComponent?.release() }
         videoSurface.removeAll()
         component = null
+        embeddedComponent = null
         player = null
         isAvailable = false
     }

@@ -63,6 +63,9 @@ private const val END_TOLERANCE_MS = 5_000L
 /** 起播超时（毫秒）：提交播放后多久仍无进度就提示线路不可用。 */
 private const val START_TIMEOUT_MS = 12_000L
 
+/** 同一集起播失败后的自动重试次数（源站偶发 403/超时时重新解析再试）。 */
+private const val MAX_PLAY_RETRY = 2
+
 /**
  * 取出媒体地址的来源站点。
  *
@@ -122,6 +125,29 @@ fun PlayerScreen(
     var playStartedAt by remember { mutableStateOf(0L) }
     /** 当前提交给播放器的媒体地址，用于失败提示时展示，便于用户反馈具体线路。 */
     var currentMediaUrl by remember { mutableStateOf<String?>(null) }
+    /** 当前集已自动重试次数。 */
+    var retryCount by remember { mutableStateOf(0) }
+    /** 自增后触发「重新解析 + 重连」，用于起播失败自动重试。 */
+    var reloadToken by remember { mutableStateOf(0) }
+
+    /**
+     * 起播彻底失败时切换到下一条线路。
+     *
+     * 功能：当前线路重试用尽仍无法起播时，自动切到下一条线路并沿用当前集数；
+     *      已经没有更多线路则返回 false，由调用方给出最终提示。
+     * 参数：无。
+     * 返回值：Boolean —— 是否成功切换。
+     */
+    fun switchToNextLine(): Boolean {
+        val lines = detail?.lines.orEmpty()
+        if (lineIndex + 1 >= lines.size) return false
+        lineIndex += 1
+        val count = lines[lineIndex].episodes.size
+        if (episodeIndex >= count) episodeIndex = (count - 1).coerceAtLeast(0)
+        retryCount = 0
+        statusMessage = "当前线路不可用，已切换到「${lines[lineIndex].displayName}」"
+        return true
+    }
 
     // 播放引擎初始化：失败时给出可读提示；监听器必须初始化成功后再注册。
     LaunchedEffect(Unit) {
@@ -133,13 +159,25 @@ fun PlayerScreen(
                 // 只有「已播到接近结尾」才算正常结束并自动连播，否则提示切换线路，避免一路跳到最后一集。
                 SwingUtilities.invokeLater {
                     val nearEnd = totalMs > 0L && elapsedMs >= totalMs - END_TOLERANCE_MS
+                    val started = controller.progress().first > 0L
                     when {
                         nearEnd && autoNext -> {
                             val episodes = detail?.lines?.getOrNull(lineIndex)?.episodes.orEmpty()
                             if (episodeIndex + 1 < episodes.size) episodeIndex += 1
                         }
 
-                        !nearEnd -> statusMessage = "该线路播放失败，请切换片源或线路"
+                        // 从未起播就报错：源站偶发 403/超时，自动重新解析并重连
+                        !nearEnd && !started && retryCount < MAX_PLAY_RETRY -> {
+                            retryCount += 1
+                            statusMessage = "起播失败，正在重试（$retryCount/$MAX_PLAY_RETRY）…"
+                            reloadToken += 1
+                        }
+
+                        !nearEnd -> {
+                            if (!switchToNextLine()) {
+                                statusMessage = "该线路播放失败，请切换片源或线路"
+                            }
+                        }
                     }
                 }
             }
@@ -164,13 +202,22 @@ fun PlayerScreen(
         if (detail == null) statusMessage = "详情加载失败，请切换其他片源重试"
     }
 
-    // 选中剧集变化时解析并播放
-    LaunchedEffect(detail, lineIndex, episodeIndex) {
+    // 切换集数或线路时重置重试计数
+    LaunchedEffect(lineIndex, episodeIndex) {
+        retryCount = 0
+    }
+
+    // 选中剧集变化时解析并播放；reloadToken 变化表示起播失败后的自动重试
+    LaunchedEffect(detail, lineIndex, episodeIndex, reloadToken) {
         val lines = detail?.lines ?: return@LaunchedEffect
         val episode = lines.getOrNull(lineIndex)?.episodes?.getOrNull(episodeIndex) ?: return@LaunchedEffect
         if (engineError != null) return@LaunchedEffect
         isPreparing = true
-        statusMessage = "正在解析播放地址…"
+        statusMessage = if (retryCount > 0) "正在重试（$retryCount/$MAX_PLAY_RETRY）…" else "正在解析播放地址…"
+        // 重试时清掉解析缓存，避免复用已失效的签名地址
+        if (retryCount > 0) {
+            withContext(Dispatchers.IO) { AppGraph.videoRepository.clearCaches() }
+        }
         val mediaUrl = withContext(Dispatchers.IO) {
             AppGraph.videoRepository.resolvePlayUrl(episode.url)
         }
@@ -211,17 +258,26 @@ fun PlayerScreen(
             if (current > 0L && !isPreparing && statusMessage != null) {
                 statusMessage = null
             }
-            // 起播看门狗：提交播放后 12 秒仍拿不到任何进度，说明该线路不可用，给出提示而不是一直黑屏
+            // 起播看门狗：提交播放后 12 秒仍拿不到任何进度，先自动重试，重试用尽再提示切换线路
             if (current > 0L || total > 0L) {
                 playStartedAt = 0L
+                retryCount = 0
             } else if (playStartedAt > 0L && System.currentTimeMillis() - playStartedAt > START_TIMEOUT_MS) {
-                val shown = currentMediaUrl?.substringAfter("://")?.take(48)
-                statusMessage = if (shown != null) {
-                    "该线路播放失败（$shown），请切换片源或线路"
-                } else {
-                    "该线路播放失败，请切换片源或线路"
-                }
                 playStartedAt = 0L
+                if (retryCount < MAX_PLAY_RETRY) {
+                    retryCount += 1
+                    statusMessage = "起播超时，正在重试（$retryCount/$MAX_PLAY_RETRY）…"
+                    reloadToken += 1
+                } else {
+                    val shown = currentMediaUrl?.substringAfter("://")?.take(48)
+                    if (!switchToNextLine()) {
+                        statusMessage = if (shown != null) {
+                            "该线路播放失败（$shown），请切换片源或线路"
+                        } else {
+                            "该线路播放失败，请切换片源或线路"
+                        }
+                    }
+                }
             }
             tick++
             delay(500)

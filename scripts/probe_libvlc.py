@@ -39,9 +39,13 @@ print("[probe] media =", media)
 print("[probe] adding options...")
 vlc.libvlc_media_add_option.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 vlc.libvlc_media_add_option.restype = None
-vlc.libvlc_media_add_option(media, b":http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0 Safari/537.36")
-vlc.libvlc_media_add_option(media, b":http-referrer=https://v.lfthirtytwo.com/")
-print("[probe] options ok")
+ua = os.environ.get("PROBE_UA", "")
+referer = os.environ.get("PROBE_REFERER", "")
+if ua:
+    vlc.libvlc_media_add_option(media, (":http-user-agent=" + ua).encode())
+if referer:
+    vlc.libvlc_media_add_option(media, (":http-referrer=" + referer).encode())
+print("[probe] options ok ua=%r referer=%r" % (ua[:20], referer[:30]))
 
 print("[probe] creating player...")
 vlc.libvlc_media_player_new_from_media.restype = ctypes.c_void_p

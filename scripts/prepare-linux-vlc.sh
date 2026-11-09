@@ -7,6 +7,12 @@
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
+# Debian 11 已结束支持，bullseye-security 的索引仍指向已被清理的 deb 文件（下载全部 404），
+# 而 bullseye 主仓完整保留 VLC 3.0.21 及其依赖。因此只保留主仓并强制重建索引，
+# 避免基础镜像里残留的旧索引参与解析。
+printf 'deb http://deb.debian.org/debian bullseye main\n' > /etc/apt/sources.list
+rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources
+rm -rf /var/lib/apt/lists/*
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
     libvlc5 libvlccore9 vlc-data vlc-plugin-base vlc-plugin-video-output vlc-plugin-access-extra \

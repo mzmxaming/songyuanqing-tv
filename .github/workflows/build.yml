@@ -188,7 +188,7 @@ jobs:
 
       - name: Bundle libVLC for Linux package
         run: |
-          # 在 Debian 11 容器里取 libVLC 3.0.16 及插件（glibc 2.31，与银河麒麟 V10 SP1 同代）；
+          # 在 Debian 11 容器里取 libVLC 3.0.21 及插件（glibc 2.31，与银河麒麟 V10 SP1 同代）；
           # 20.04 自带的 3.0.9.2 处理 HLS 相对地址有缺陷，会把地址截成 https://host: 导致播放失败。
           docker run --rm -v "$GITHUB_WORKSPACE:/ws" -w /ws debian:bullseye \
             bash scripts/prepare-linux-vlc.sh

@@ -158,9 +158,18 @@ class VlcPlayerController {
                 }
             }
             add("--no-video-title-show")
+            if (isLinux()) {
+                // 与 Compose/Skiko 同进程时避免 OpenGL 上下文冲突：强制 X11 原生窗口输出 + 软件解码
+                add("--vout=xcb_x11")
+                add("--avcodec-hw=none")
+            }
+            // 诊断开关：设置 TV_VLC_DEBUG=1 时输出 libVLC 详细日志（控制台，带对象地址，便于区分并发输入）
+            if (System.getenv("TV_VLC_DEBUG") != null) {
+                add("--verbose=2")
+            }
         }
-        val created = if (System.getProperty("os.name").lowercase().contains("linux")) {
-            // Linux 用嵌入式原生窗口输出：VLC 3.0.9.2 不触发视频回调，回调渲染会一直黑屏
+        val created = if (isLinux()) {
+            // Linux 用嵌入式 X11 原生窗口输出，并配合打包时移除的 GL 输出插件避免与 Compose 的 GL 上下文冲突
             EmbeddedMediaPlayerComponent(*vlcArgs.toTypedArray()).also { embedded ->
                 embeddedComponent = embedded
                 videoSurface.add(embedded, BorderLayout.CENTER)
@@ -211,6 +220,14 @@ class VlcPlayerController {
     }
 
     /**
+     * 判断当前是否 Linux 平台。
+     *
+     * 参数：无。
+     * 返回值：Boolean —— 是 Linux 返回 true。
+     */
+    private fun isLinux(): Boolean = System.getProperty("os.name").lowercase().contains("linux")
+
+    /**
      * 读取当前实际加载的 libVLC 动态库路径。
      *
      * 参数：无。
@@ -239,8 +256,16 @@ class VlcPlayerController {
                     if (!referer.isNullOrBlank()) add(":http-referrer=$referer")
                 }
             }
+            // Linux 内置 libVLC 解析 HLS 相对密钥地址时会拼出 https://host: 导致解复用失败，
+            // 先把清单里的相对地址改写成绝对地址；非 m3u8 或失败时原样播放。
+            val target = if (isLinux() && System.getenv("TV_NO_HLS_REWRITE") == null && url.contains(".m3u8")) {
+                HlsManifestRewriter.rewrite(url, referer) ?: url
+            } else {
+                url
+            }
+            println("[play] 实际播放=$target")
             println("[play] 媒体选项=$options")
-            current.media().play(url, *options.toTypedArray())
+            current.media().play(target, *options.toTypedArray())
             true
         }.getOrDefault(false)
     }

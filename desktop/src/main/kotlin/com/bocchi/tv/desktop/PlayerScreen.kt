@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import com.bocchi.tv.data.video.model.AggregatedVideo
 import com.bocchi.tv.data.video.model.VideoDetail
 import com.bocchi.tv.data.video.model.VideoSummary
+import com.bocchi.tv.desktop.player.VlcEngine
 import com.bocchi.tv.desktop.player.VlcPlayerController
 import com.bocchi.tv.desktop.ui.formatTime
 import com.bocchi.tv.shared.AppGraph
@@ -104,7 +105,7 @@ fun PlayerScreen(
     onToggleFullscreen: () -> Unit = {},
     onBack: () -> Unit
 ) {
-    val controller = remember { VlcPlayerController() }
+    val controller = remember { VlcEngine.controller }
     val focusRequester = remember { FocusRequester() }
 
     var currentMatch by remember { mutableStateOf(initialMatch) }
@@ -189,7 +190,8 @@ fun PlayerScreen(
     DisposableEffect(Unit) {
         onDispose {
             saveHistory(controller.progress().first, controller.progress().second, currentMatch, detail, lineIndex, episodeIndex)
-            controller.release()
+            // 播放引擎是进程级共享实例，离开播放页只停止播放，不释放引擎
+            controller.stop()
         }
     }
 

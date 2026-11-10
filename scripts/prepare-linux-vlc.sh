@@ -40,6 +40,15 @@ rm -rf "$OUT/plugins/gui" "$OUT/plugins/control" "$OUT/plugins/visualization" \
        "$OUT/plugins/mux" "$OUT/plugins/stream_out" "$OUT/plugins/access_output"
 rm -f "$OUT/plugins/plugins.dat"
 
+# 移除 OpenGL / EGL 视频输出插件：与 Compose（Skiko）在同一进程里会争用 GL 上下文，
+# 出画瞬间直接崩溃（JVM fatal error）。去掉后 libVLC 自动走 xcb_x11 / xcb_xv 软件输出。
+rm -f "$OUT"/plugins/video_output/libgl_plugin.so \
+      "$OUT"/plugins/video_output/libglx_plugin.so \
+      "$OUT"/plugins/video_output/libegl_x11_plugin.so \
+      "$OUT"/plugins/video_output/libegl_wl_plugin.so \
+      "$OUT"/plugins/video_output/libgles2_plugin.so
+rm -f "$OUT"/plugins/video_output/libglconv_*.so
+
 # JNA 以 "vlc" 为名查找动态库，需要 libvlc.so
 ln -sf libvlc.so.5 "$OUT/lib/libvlc.so"
 
